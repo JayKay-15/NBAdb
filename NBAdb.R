@@ -1,19 +1,15 @@
 ######## Database ########
 
 if (!require("pacman")) install.packages("pacman"); library(pacman)
-pacman::p_load(tidyverse, readxl, na.tools, caTools, Amelia, lubridate, hms,
-               ggthemes, ggrepel, ggimage, XML, RCurl, openxlsx,
-               rvest, nflfastR, nbastatR, nbaTools, data.table,
-               here, skimr, janitor, SimDesign, zoo, future,
-               corrgram, corrplot)
+pacman::p_load(tidyverse, readxl, lubridate, openxlsx, nbastatR)
+
 options(dplyr.summarise.inform = FALSE)
 
 rm(list=ls())
 setwd("/Users/Jesse/Documents/MyStuff/NBA Database/NBAdb")
 
-fn <- "NBAdb1721_pre"
+fn <- "NBAdb1721"
 u <- paste0("/Users/Jesse/Documents/MyStuff/NBA Database/NBAdb/",fn,".xlsx")
-
 
 final_db <- data.frame()
 
@@ -1031,11 +1027,13 @@ for (b in b:h) {
     ## split by home/away then add averages
     ## bring file back together
     
-    raw_adj_home <- left_join(raw_final, away_final, by = c("opptName" = "teamName")) %>%
+    raw_adj_home <- raw_final %>%
+        left_join(away_final, by = c("opptName" = "teamName")) %>%
         left_join(., home_final, by = c("teamName" = "teamName")) %>%
         filter(teamLoc == "H")
     
-    raw_adj_away <- left_join(raw_final, home_final, by = c("opptName" = "teamName")) %>%
+    raw_adj_away <- raw_final %>%
+        left_join(home_final, by = c("opptName" = "teamName")) %>%
         left_join(., away_final, by = c("teamName" = "teamName")) %>%
         filter(teamLoc == "A")
     
@@ -1107,11 +1105,14 @@ for (b in b:h) {
     ######### ROUND 2 ADJUSTMENTS ########
     
     #Joining for oppt stats
-    raw_adj_home_2 <- left_join(raw_final, away_adj_round_1, by = c("opptName" = "teamName")) %>%
+    raw_adj_home_2 <- raw_final %>%
+        left_join(away_adj_round_1, by = c("opptName" = "teamName")) %>%
         left_join(., home_adj_round_1, by = c("teamName" = "teamName")) %>%
         filter(teamLoc == "H")
+    
     #Joining for team stats
-    raw_adj_away_2 <- left_join(raw_final, home_adj_round_1, by = c("opptName" = "teamName")) %>%
+    raw_adj_away_2 <- raw_final %>%
+        left_join(home_adj_round_1, by = c("opptName" = "teamName")) %>%
         left_join(., away_adj_round_1, by = c("teamName" = "teamName")) %>%
         filter(teamLoc == "A")
     
@@ -1183,11 +1184,13 @@ for (b in b:h) {
     ######### ROUND 3 ADJUSTMENTS ########
     
     #Joining for oppt stats
-    raw_adj_home_3 <- left_join(raw_final, away_adj_round_2, by = c("opptName" = "teamName")) %>%
+    raw_adj_home_3 <- raw_final %>%
+        left_join(away_adj_round_2, by = c("opptName" = "teamName")) %>%
         left_join(., home_adj_round_2, by = c("teamName" = "teamName")) %>%
         filter(teamLoc == "H")
     #Joining for team stats
-    raw_adj_away_3 <- left_join(raw_final, home_adj_round_2, by = c("opptName" = "teamName")) %>%
+    raw_adj_away_3 <- raw_final %>%
+        left_join(home_adj_round_2, by = c("opptName" = "teamName")) %>%
         left_join(., away_adj_round_2, by = c("teamName" = "teamName")) %>%
         filter(teamLoc == "A")
     
@@ -1693,14 +1696,6 @@ final_db$Win <- if_else(final_db$AS > final_db$HS, 1, 0)
 final_db <- final_db %>%
     select(1:6,77,78,7:76) %>%
     arrange(Date)
-
-# #### Standardize ####
-# 
-# std_stats <- function(x) {
-#     (x - mean(x)) / sd(x)
-# }
-# 
-# final_db_std <- final_db %>% mutate(across(c(FG_away:Pace_home), std_stats))
 
 ##### EXPORT TO EXCEL ######
 
