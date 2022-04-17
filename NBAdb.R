@@ -4,16 +4,17 @@ if (!require("pacman")) install.packages("pacman"); library(pacman)
 pacman::p_load(tidyverse, readxl, lubridate, openxlsx, nbastatR)
 
 options(dplyr.summarise.inform = FALSE)
+Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
 
 rm(list=ls())
-setwd("/Users/Jesse/Documents/MyStuff/NBA Database/NBAdb")
+setwd("/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/")
 
-fn <- "NBAdb1721"
-u <- paste0("/Users/Jesse/Documents/MyStuff/NBA Database/NBAdb/",fn,".xlsx")
+fn <- "NBAdb1722_add"
+u <- paste0("/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/",fn,".xlsx")
 
 final_db <- data.frame()
 
-game_logs(seasons = c(2017:2021), result_types = c("team","players"))
+game_logs(seasons = c(2017:2022), result_types = c("team","players"))
 
 dataGameLogsTeam <- dataGameLogsTeam %>% arrange(dateGame,idGame)
 dataGameLogsTeam$dateGame <- as_date(dataGameLogsTeam$dateGame)
@@ -23,7 +24,7 @@ dates17 <- dataGameLogsTeam %>%
     distinct(dateGame) %>%
     mutate(stat_start = min(dateGame)) %>%
     mutate(stat_end = dateGame - 1) %>%
-    mutate(adj = if_else(row_number() <= 32, 0, 1))
+    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 20, 0, 1))
 
 dates17[c(1:11),3] <- dates17[c(1:11),1]
 
@@ -32,7 +33,7 @@ dates18 <- dataGameLogsTeam %>%
     distinct(dateGame) %>%
     mutate(stat_start = min(dateGame)) %>%
     mutate(stat_end = dateGame - 1) %>%
-    mutate(adj = if_else(row_number() <= 32, 0, 1))
+    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 20, 0, 1))
 
 dates18[c(1:11),3] <- dates18[c(1:11),1]
 
@@ -41,7 +42,7 @@ dates19 <- dataGameLogsTeam %>%
     distinct(dateGame) %>%
     mutate(stat_start = min(dateGame)) %>%
     mutate(stat_end = dateGame - 1) %>%
-    mutate(adj = if_else(row_number() <= 32, 0, 1))
+    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 20, 0, 1))
 
 dates19[c(1:11),3] <- dates19[c(1:11),1]
 
@@ -50,7 +51,7 @@ dates20 <- dataGameLogsTeam %>%
     distinct(dateGame) %>%
     mutate(stat_start = min(dateGame)) %>%
     mutate(stat_end = dateGame - 1) %>%
-    mutate(adj = if_else(row_number() <= 32, 0, 1))
+    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 20, 0, 1))
 
 dates20[c(1:11),3] <- dates20[c(1:11),1]
 
@@ -59,11 +60,21 @@ dates21 <- dataGameLogsTeam %>%
     distinct(dateGame) %>%
     mutate(stat_start = min(dateGame - 1)) %>%
     mutate(stat_end = dateGame) %>%
-    mutate(adj = if_else(row_number() <= 24, 0, 1))
+    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 13, 0, 1))
 
 dates21[c(1:11),3] <- dates21[c(1:11),1]
 
-dates <- as.data.frame(bind_rows(dates17, dates18, dates19, dates20, dates21))
+dates22 <- dataGameLogsTeam %>%
+    filter(yearSeason == 2022) %>%
+    distinct(dateGame) %>%
+    mutate(stat_start = min(dateGame - 1)) %>%
+    mutate(stat_end = dateGame) %>%
+    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 20, 0, 1))
+
+dates22[c(1:11),3] <- dates22[c(1:11),1]
+
+dates <- as.data.frame(bind_rows(dates22))
+dates <- dates %>% filter(dateGame > "2022-03-13")
 
 dates_no_adj <- dates %>%
     filter(adj == 0)
@@ -143,8 +154,8 @@ for (b in b:h) {
     
     season_adv <- season_grouped
     
-    season_adv$Poss <- with(season_adv, teamFGA - teamORB + teamTO + (.44 * teamFTA))
-    season_adv$oPoss <- with(season_adv, opptFGA - opptORB + opptTO + (.44 * opptFTA))
+    season_adv$Poss <- with(season_adv, teamFGA - teamORB + teamTOV + (.44 * teamFTA))
+    season_adv$oPoss <- with(season_adv, opptFGA - opptORB + opptTOV + (.44 * opptFTA))
     season_adv$Pace <- with(season_adv, 48 * (Poss + oPoss) / (2 * (teamMin/5)))
     season_adv$oPace <- with(season_adv, 48 * (Poss + oPoss) / (2 * (opptMin/5)))
     season_adv$ORtg <- with(season_adv, (teamPTS / Poss) * 100)
@@ -325,8 +336,8 @@ for (b in b:h) {
     
     home_adv <- home_grouped
     
-    home_adv$Poss <- with(home_adv, teamFGA - teamORB + teamTO + (.44 * teamFTA))
-    home_adv$oPoss <- with(home_adv, opptFGA - opptORB + opptTO + (.44 * opptFTA))
+    home_adv$Poss <- with(home_adv, teamFGA - teamORB + teamTOV + (.44 * teamFTA))
+    home_adv$oPoss <- with(home_adv, opptFGA - opptORB + opptTOV + (.44 * opptFTA))
     home_adv$Pace <- with(home_adv, 48 * (Poss + oPoss) / (2 * (teamMin/5)))
     home_adv$oPace <- with(home_adv, 48 * (Poss + oPoss) / (2 * (opptMin/5)))
     home_adv$ORtg <- with(home_adv, (teamPTS / Poss) * 100)
@@ -507,8 +518,8 @@ for (b in b:h) {
     
     away_adv <- away_grouped
     
-    away_adv$Poss <- with(away_adv, teamFGA - teamORB + teamTO + (.44 * teamFTA))
-    away_adv$oPoss <- with(away_adv, opptFGA - opptORB + opptTO + (.44 * opptFTA))
+    away_adv$Poss <- with(away_adv, teamFGA - teamORB + teamTOV + (.44 * teamFTA))
+    away_adv$oPoss <- with(away_adv, opptFGA - opptORB + opptTOV + (.44 * opptFTA))
     away_adv$Pace <- with(away_adv, 48 * (Poss + oPoss) / (2 * (teamMin/5)))
     away_adv$oPace <- with(away_adv, 48 * (Poss + oPoss) / (2 * (opptMin/5)))
     away_adv$ORtg <- with(away_adv, (teamPTS / Poss) * 100)
@@ -785,8 +796,8 @@ for (b in b:h) {
     
     season_adv <- season_grouped
     
-    season_adv$Poss <- with(season_adv, teamFGA - teamORB + teamTO + (.44 * teamFTA))
-    season_adv$oPoss <- with(season_adv, opptFGA - opptORB + opptTO + (.44 * opptFTA))
+    season_adv$Poss <- with(season_adv, teamFGA - teamORB + teamTOV + (.44 * teamFTA))
+    season_adv$oPoss <- with(season_adv, opptFGA - opptORB + opptTOV + (.44 * opptFTA))
     season_adv$Pace <- with(season_adv, 48 * (Poss + oPoss) / (2 * (teamMin/5)))
     season_adv$oPace <- with(season_adv, 48 * (Poss + oPoss) / (2 * (opptMin/5)))
     season_adv$ORtg <- with(season_adv, (teamPTS / Poss) * 100)
@@ -840,8 +851,8 @@ for (b in b:h) {
     
     home_adv <- home_grouped
     
-    home_adv$Poss <- with(home_adv, teamFGA - teamORB + teamTO + (.44 * teamFTA))
-    home_adv$oPoss <- with(home_adv, opptFGA - opptORB + opptTO + (.44 * opptFTA))
+    home_adv$Poss <- with(home_adv, teamFGA - teamORB + teamTOV + (.44 * teamFTA))
+    home_adv$oPoss <- with(home_adv, opptFGA - opptORB + opptTOV + (.44 * opptFTA))
     home_adv$Pace <- with(home_adv, 48 * (Poss + oPoss) / (2 * (teamMin/5)))
     home_adv$oPace <- with(home_adv, 48 * (Poss + oPoss) / (2 * (opptMin/5)))
     home_adv$ORtg <- with(home_adv, (teamPTS / Poss) * 100)
@@ -895,8 +906,8 @@ for (b in b:h) {
     
     away_adv <- away_grouped
     
-    away_adv$Poss <- with(away_adv, teamFGA - teamORB + teamTO + (.44 * teamFTA))
-    away_adv$oPoss <- with(away_adv, opptFGA - opptORB + opptTO + (.44 * opptFTA))
+    away_adv$Poss <- with(away_adv, teamFGA - teamORB + teamTOV + (.44 * teamFTA))
+    away_adv$oPoss <- with(away_adv, opptFGA - opptORB + opptTOV + (.44 * opptFTA))
     away_adv$Pace <- with(away_adv, 48 * (Poss + oPoss) / (2 * (teamMin/5)))
     away_adv$oPace <- with(away_adv, 48 * (Poss + oPoss) / (2 * (opptMin/5)))
     away_adv$ORtg <- with(away_adv, (teamPTS / Poss) * 100)
@@ -977,8 +988,8 @@ for (b in b:h) {
     
     raw_adv <- gl
     
-    raw_adv$Poss <- with(raw_adv, teamFGA - teamORB + teamTO + (.44 * teamFTA))
-    raw_adv$oPoss <- with(raw_adv, opptFGA - opptORB + opptTO + (.44 * opptFTA))
+    raw_adv$Poss <- with(raw_adv, teamFGA - teamORB + teamTOV + (.44 * teamFTA))
+    raw_adv$oPoss <- with(raw_adv, opptFGA - opptORB + opptTOV + (.44 * opptFTA))
     raw_adv$Pace <- with(raw_adv, 48 * (Poss + oPoss) / (2 * (teamMin/5)))
     raw_adv$oPace <- with(raw_adv, 48 * (Poss + oPoss) / (2 * (opptMin/5)))
     raw_adv$ORtg <- with(raw_adv, (teamPTS / Poss) * 100)
