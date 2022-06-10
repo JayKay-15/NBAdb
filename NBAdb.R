@@ -9,7 +9,7 @@ Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
 rm(list=ls())
 setwd("/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/")
 
-fn <- "NBAdb1722_add"
+fn <- "NBAdb1722_oneadj_pos"
 u <- paste0("/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/",fn,".xlsx")
 
 final_db <- data.frame()
@@ -73,8 +73,8 @@ dates22 <- dataGameLogsTeam %>%
 
 dates22[c(1:11),3] <- dates22[c(1:11),1]
 
-dates <- as.data.frame(bind_rows(dates22))
-dates <- dates %>% filter(dateGame > "2022-03-13")
+dates <- as.data.frame(bind_rows(dates22, dates21, dates20, dates19, dates18, dates17))
+# dates <- dates %>% filter(dateGame > "2022-03-19")
 
 dates_no_adj <- dates %>%
     filter(adj == 0)
@@ -154,6 +154,10 @@ for (b in b:h) {
     
     season_adv <- season_grouped
     
+    # season_adv$Poss <- with(season_adv, 0.5 * ((teamFGA + 0.4 * teamFTA - 1.07 * (teamORB / (teamORB + opptDRB)) * (teamFGA - teamFGM) + teamTOV) + 
+    #                                                (opptFGA + 0.4 * opptFTA - 1.07 * (opptORB / (opptORB + teamDRB)) * (opptFGA - opptFGM) + opptTOV)))
+    # season_adv$oPoss <- with(season_adv, 0.5 * ((opptFGA + 0.4 * opptFTA - 1.07 * (opptORB / (opptORB + teamDRB)) * (opptFGA - opptFGM) + opptTOV) +
+    #                                                 (teamFGA + 0.4 * teamFTA - 1.07 * (teamORB / (teamORB + opptDRB)) * (teamFGA - teamFGM) + teamTOV)))
     season_adv$Poss <- with(season_adv, teamFGA - teamORB + teamTOV + (.44 * teamFTA))
     season_adv$oPoss <- with(season_adv, opptFGA - opptORB + opptTOV + (.44 * opptFTA))
     season_adv$Pace <- with(season_adv, 48 * (Poss + oPoss) / (2 * (teamMin/5)))
@@ -1113,173 +1117,173 @@ for (b in b:h) {
         group_by(teamName) %>%
         summarise(across(where(is.numeric), mean))
     
-    ######### ROUND 2 ADJUSTMENTS ########
-    
-    #Joining for oppt stats
-    raw_adj_home_2 <- raw_final %>%
-        left_join(away_adj_round_1, by = c("opptName" = "teamName")) %>%
-        left_join(., home_adj_round_1, by = c("teamName" = "teamName")) %>%
-        filter(teamLoc == "H")
-    
-    #Joining for team stats
-    raw_adj_away_2 <- raw_final %>%
-        left_join(home_adj_round_1, by = c("opptName" = "teamName")) %>%
-        left_join(., away_adj_round_1, by = c("teamName" = "teamName")) %>%
-        filter(teamLoc == "A")
-    
-    raw_adj_2 <- bind_rows(raw_adj_home_2,raw_adj_away_2)
-    
-    #.x = oppt avg, .y = team avg, no tail = game actual
-    
-    raw_adj_2$FG_adj <- (raw_adj_2$FG - (raw_adj_2$oFG_adj.x - season_lg_avg$FG))
-    raw_adj_2$SR2_adj <- (raw_adj_2$SR2 - (raw_adj_2$oSR2_adj.x - season_lg_avg$SR2))
-    raw_adj_2$FG3_adj <- (raw_adj_2$FG3 - (raw_adj_2$oFG3_adj.x - season_lg_avg$FG3 ))
-    raw_adj_2$SR3_adj <- (raw_adj_2$SR3 - (raw_adj_2$oSR3_adj.x - season_lg_avg$SR3))
-    raw_adj_2$FT_adj <- (raw_adj_2$FT - (raw_adj_2$oFT_adj.x - season_lg_avg$FT))
-    raw_adj_2$FTR_adj <- (raw_adj_2$FTR - (raw_adj_2$oFTR_adj.x - season_lg_avg$FTR))
-    raw_adj_2$ORB_adj <- (raw_adj_2$ORB + (raw_adj_2$oDRB_adj.x - season_lg_avg$DRB))
-    raw_adj_2$DRB_adj <- (raw_adj_2$DRB - (raw_adj_2$oORB_adj.x - season_lg_avg$ORB))
-    raw_adj_2$TRB_adj <- (raw_adj_2$TRB + (raw_adj_2$oTRB_adj.x - season_lg_avg$TRB))
-    raw_adj_2$AST_adj <- (raw_adj_2$AST - (raw_adj_2$oAST_adj.x - season_lg_avg$AST))
-    raw_adj_2$TOV_adj <- (raw_adj_2$TOV - (raw_adj_2$oTOV_adj.x - season_lg_avg$TOV))
-    raw_adj_2$STL_adj <- (raw_adj_2$STL - (raw_adj_2$oSTL_adj.x - season_lg_avg$STL))
-    raw_adj_2$BLK_adj <- (raw_adj_2$BLK - (raw_adj_2$oBLK_adj.x - season_lg_avg$BLK))
-    raw_adj_2$PF_adj <- (raw_adj_2$PF - (raw_adj_2$oPF_adj.x - season_lg_avg$PF)) 
-    raw_adj_2$eFG_adj <- (raw_adj_2$eFG - (raw_adj_2$oeFG_adj.x - season_lg_avg$eFG))
-    raw_adj_2$TS_adj <- (raw_adj_2$TS - (raw_adj_2$oTS_adj.x - season_lg_avg$TS))
-    raw_adj_2$ExpPace <- (season_lg_avg$Pace + (raw_adj_2$Pace - season_lg_avg$Pace) + 
-                              (raw_adj_2$Pace_adj.x - season_lg_avg$Pace))
-    raw_adj_2$PaceDiff <- (raw_adj_2$Pace - raw_adj_2$ExpPace)
-    raw_adj_2$PaceR <- (raw_adj_2$Pace_adj.y / (raw_adj_2$Pace_adj.y + raw_adj_2$Pace_adj.x))
-    raw_adj_2$oPaceR <- (raw_adj_2$Pace_adj.x / (raw_adj_2$Pace_adj.y + raw_adj_2$Pace_adj.x))
-    raw_adj_2$Pace_adj <- (raw_adj_2$Pace_adj.y + (raw_adj_2$PaceDiff * raw_adj_2$PaceR))
-    raw_adj_2$ORtg_adj <- (raw_adj_2$ORtg - (raw_adj_2$DRtg_adj.x - season_lg_avg$DRtg))
-    raw_adj_2$DRtg_adj <- (raw_adj_2$DRtg - (raw_adj_2$ORtg_adj.x - season_lg_avg$ORtg))
-    
-    raw_adj_2$oFG_adj <- (raw_adj_2$oFG - (raw_adj_2$FG_adj.y - season_lg_avg$FG))
-    raw_adj_2$oSR2_adj <- (raw_adj_2$oSR2 - (raw_adj_2$SR2_adj.y - season_lg_avg$SR2))
-    raw_adj_2$oFG3_adj <- (raw_adj_2$oFG3 - (raw_adj_2$FG3_adj.y - season_lg_avg$FG3 ))
-    raw_adj_2$oSR3_adj <- (raw_adj_2$oSR3 - (raw_adj_2$SR3_adj.y - season_lg_avg$SR3))
-    raw_adj_2$oFT_adj <- (raw_adj_2$oFT - (raw_adj_2$FT_adj.y - season_lg_avg$FT))
-    raw_adj_2$oFTR_adj <- (raw_adj_2$oFTR - (raw_adj_2$FTR_adj.y - season_lg_avg$FTR))
-    raw_adj_2$oORB_adj <- (raw_adj_2$oORB + (raw_adj_2$DRB_adj.y - season_lg_avg$DRB))
-    raw_adj_2$oDRB_adj <- (raw_adj_2$oDRB - (raw_adj_2$ORB_adj.y - season_lg_avg$ORB))
-    raw_adj_2$oTRB_adj <- (raw_adj_2$oTRB + (raw_adj_2$TRB_adj.y - season_lg_avg$TRB))
-    raw_adj_2$oAST_adj <- (raw_adj_2$oAST - (raw_adj_2$AST_adj.y - season_lg_avg$AST))
-    raw_adj_2$oTOV_adj <- (raw_adj_2$oTOV - (raw_adj_2$TOV_adj.y - season_lg_avg$TOV))
-    raw_adj_2$oSTL_adj <- (raw_adj_2$oSTL - (raw_adj_2$STL_adj.y - season_lg_avg$STL))
-    raw_adj_2$oBLK_adj <- (raw_adj_2$oBLK - (raw_adj_2$BLK_adj.y - season_lg_avg$BLK))
-    raw_adj_2$oPF_adj <- (raw_adj_2$oPF - (raw_adj_2$PF_adj.y - season_lg_avg$PF)) 
-    raw_adj_2$oeFG_adj <- (raw_adj_2$oeFG - (raw_adj_2$eFG_adj.y - season_lg_avg$eFG))
-    raw_adj_2$oTS_adj <- (raw_adj_2$oTS - (raw_adj_2$TS_adj.y - season_lg_avg$TS))
-    
-    ### GROUP ROUND 2 ADJUSTMENTS
-    
-    season_adj_round_2 <- raw_adj_2 %>%
-        select(2,109:124,132:147,130,131,129) %>%
-        group_by(teamName) %>%
-        summarise(across(where(is.numeric), mean))
-    
-    home_adj_round_2 <- raw_adj_2 %>%
-        select(1,2,109:124,132:147,130,131,129) %>%
-        filter(teamLoc == "H") %>%
-        group_by(teamName) %>%
-        summarise(across(where(is.numeric), mean))
-    
-    away_adj_round_2 <- raw_adj_2 %>%
-        select(1,2,109:124,132:147,130,131,129) %>%
-        filter(teamLoc == "A") %>%
-        group_by(teamName) %>%
-        summarise(across(where(is.numeric), mean))
-    
-    ######### ROUND 3 ADJUSTMENTS ########
-    
-    #Joining for oppt stats
-    raw_adj_home_3 <- raw_final %>%
-        left_join(away_adj_round_2, by = c("opptName" = "teamName")) %>%
-        left_join(., home_adj_round_2, by = c("teamName" = "teamName")) %>%
-        filter(teamLoc == "H")
-    #Joining for team stats
-    raw_adj_away_3 <- raw_final %>%
-        left_join(home_adj_round_2, by = c("opptName" = "teamName")) %>%
-        left_join(., away_adj_round_2, by = c("teamName" = "teamName")) %>%
-        filter(teamLoc == "A")
-    
-    raw_adj_3 <- bind_rows(raw_adj_home_3,raw_adj_away_3)
-    
-    #.x = oppt avg, .y = team avg, no tail = game actual
-    
-    raw_adj_3$FG_adj <- (raw_adj_3$FG - (raw_adj_3$oFG_adj.x - season_lg_avg$FG))
-    raw_adj_3$SR2_adj <- (raw_adj_3$SR2 - (raw_adj_3$oSR2_adj.x - season_lg_avg$SR2))
-    raw_adj_3$FG3_adj <- (raw_adj_3$FG3 - (raw_adj_3$oFG3_adj.x - season_lg_avg$FG3 ))
-    raw_adj_3$SR3_adj <- (raw_adj_3$SR3 - (raw_adj_3$oSR3_adj.x - season_lg_avg$SR3))
-    raw_adj_3$FT_adj <- (raw_adj_3$FT - (raw_adj_3$oFT_adj.x - season_lg_avg$FT))
-    raw_adj_3$FTR_adj <- (raw_adj_3$FTR - (raw_adj_3$oFTR_adj.x - season_lg_avg$FTR))
-    raw_adj_3$ORB_adj <- (raw_adj_3$ORB + (raw_adj_3$oDRB_adj.x - season_lg_avg$DRB))
-    raw_adj_3$DRB_adj <- (raw_adj_3$DRB - (raw_adj_3$oORB_adj.x - season_lg_avg$ORB))
-    raw_adj_3$TRB_adj <- (raw_adj_3$TRB + (raw_adj_3$oTRB_adj.x - season_lg_avg$TRB))
-    raw_adj_3$AST_adj <- (raw_adj_3$AST - (raw_adj_3$oAST_adj.x - season_lg_avg$AST))
-    raw_adj_3$TOV_adj <- (raw_adj_3$TOV - (raw_adj_3$oTOV_adj.x - season_lg_avg$TOV))
-    raw_adj_3$STL_adj <- (raw_adj_3$STL - (raw_adj_3$oSTL_adj.x - season_lg_avg$STL))
-    raw_adj_3$BLK_adj <- (raw_adj_3$BLK - (raw_adj_3$oBLK_adj.x - season_lg_avg$BLK))
-    raw_adj_3$PF_adj <- (raw_adj_3$PF - (raw_adj_3$oPF_adj.x - season_lg_avg$PF)) 
-    raw_adj_3$eFG_adj <- (raw_adj_3$eFG - (raw_adj_3$oeFG_adj.x - season_lg_avg$eFG))
-    raw_adj_3$TS_adj <- (raw_adj_3$TS - (raw_adj_3$oTS_adj.x - season_lg_avg$TS))
-    raw_adj_3$ExpPace <- (season_lg_avg$Pace + (raw_adj_3$Pace - season_lg_avg$Pace) + 
-                              (raw_adj_3$Pace_adj.x - season_lg_avg$Pace))
-    raw_adj_3$PaceDiff <- (raw_adj_3$Pace - raw_adj_3$ExpPace)
-    raw_adj_3$PaceR <- (raw_adj_3$Pace_adj.y / (raw_adj_3$Pace_adj.y + raw_adj_3$Pace_adj.x))
-    raw_adj_3$oPaceR <- (raw_adj_3$Pace_adj.x / (raw_adj_3$Pace_adj.y + raw_adj_3$Pace_adj.x))
-    raw_adj_3$Pace_adj <- (raw_adj_3$Pace_adj.y + (raw_adj_3$PaceDiff * raw_adj_3$PaceR))
-    raw_adj_3$ORtg_adj <- (raw_adj_3$ORtg - (raw_adj_3$DRtg_adj.x - season_lg_avg$DRtg))
-    raw_adj_3$DRtg_adj <- (raw_adj_3$DRtg - (raw_adj_3$ORtg_adj.x - season_lg_avg$ORtg))
-    
-    raw_adj_3$oFG_adj <- (raw_adj_3$oFG - (raw_adj_3$FG_adj.y - season_lg_avg$FG))
-    raw_adj_3$oSR2_adj <- (raw_adj_3$oSR2 - (raw_adj_3$SR2_adj.y - season_lg_avg$SR2))
-    raw_adj_3$oFG3_adj <- (raw_adj_3$oFG3 - (raw_adj_3$FG3_adj.y - season_lg_avg$FG3 ))
-    raw_adj_3$oSR3_adj <- (raw_adj_3$oSR3 - (raw_adj_3$SR3_adj.y - season_lg_avg$SR3))
-    raw_adj_3$oFT_adj <- (raw_adj_3$oFT - (raw_adj_3$FT_adj.y - season_lg_avg$FT))
-    raw_adj_3$oFTR_adj <- (raw_adj_3$oFTR - (raw_adj_3$FTR_adj.y - season_lg_avg$FTR))
-    raw_adj_3$oORB_adj <- (raw_adj_3$oORB + (raw_adj_3$DRB_adj.y - season_lg_avg$DRB))
-    raw_adj_3$oDRB_adj <- (raw_adj_3$oDRB - (raw_adj_3$ORB_adj.y - season_lg_avg$ORB))
-    raw_adj_3$oTRB_adj <- (raw_adj_3$oTRB + (raw_adj_3$TRB_adj.y - season_lg_avg$TRB))
-    raw_adj_3$oAST_adj <- (raw_adj_3$oAST - (raw_adj_3$AST_adj.y - season_lg_avg$AST))
-    raw_adj_3$oTOV_adj <- (raw_adj_3$oTOV - (raw_adj_3$TOV_adj.y - season_lg_avg$TOV))
-    raw_adj_3$oSTL_adj <- (raw_adj_3$oSTL - (raw_adj_3$STL_adj.y - season_lg_avg$STL))
-    raw_adj_3$oBLK_adj <- (raw_adj_3$oBLK - (raw_adj_3$BLK_adj.y - season_lg_avg$BLK))
-    raw_adj_3$oPF_adj <- (raw_adj_3$oPF - (raw_adj_3$PF_adj.y - season_lg_avg$PF)) 
-    raw_adj_3$oeFG_adj <- (raw_adj_3$oeFG - (raw_adj_3$eFG_adj.y - season_lg_avg$eFG))
-    raw_adj_3$oTS_adj <- (raw_adj_3$oTS - (raw_adj_3$TS_adj.y - season_lg_avg$TS))
-    
-    ### GROUP ROUND 3 ADJUSTMENTS
-    
-    season_adj_round_3 <- raw_adj_3 %>%
-        select(2,109:124,132:147,130,131,129) %>%
-        group_by(teamName) %>%
-        summarise(across(where(is.numeric), mean))
-    
-    home_adj_round_3 <- raw_adj_3 %>%
-        select(1,2,109:124,132:147,130,131,129) %>%
-        filter(teamLoc == "H") %>%
-        group_by(teamName) %>%
-        summarise(across(where(is.numeric), mean))
-    
-    away_adj_round_3 <- raw_adj_3 %>%
-        select(1,2,109:124,132:147,130,131,129) %>%
-        filter(teamLoc == "A") %>%
-        group_by(teamName) %>%
-        summarise(across(where(is.numeric), mean))
+    # ######### ROUND 2 ADJUSTMENTS ########
+    # 
+    # #Joining for oppt stats
+    # raw_adj_home_2 <- raw_final %>%
+    #     left_join(away_adj_round_1, by = c("opptName" = "teamName")) %>%
+    #     left_join(., home_adj_round_1, by = c("teamName" = "teamName")) %>%
+    #     filter(teamLoc == "H")
+    # 
+    # #Joining for team stats
+    # raw_adj_away_2 <- raw_final %>%
+    #     left_join(home_adj_round_1, by = c("opptName" = "teamName")) %>%
+    #     left_join(., away_adj_round_1, by = c("teamName" = "teamName")) %>%
+    #     filter(teamLoc == "A")
+    # 
+    # raw_adj_2 <- bind_rows(raw_adj_home_2,raw_adj_away_2)
+    # 
+    # #.x = oppt avg, .y = team avg, no tail = game actual
+    # 
+    # raw_adj_2$FG_adj <- (raw_adj_2$FG - (raw_adj_2$oFG_adj.x - season_lg_avg$FG))
+    # raw_adj_2$SR2_adj <- (raw_adj_2$SR2 - (raw_adj_2$oSR2_adj.x - season_lg_avg$SR2))
+    # raw_adj_2$FG3_adj <- (raw_adj_2$FG3 - (raw_adj_2$oFG3_adj.x - season_lg_avg$FG3 ))
+    # raw_adj_2$SR3_adj <- (raw_adj_2$SR3 - (raw_adj_2$oSR3_adj.x - season_lg_avg$SR3))
+    # raw_adj_2$FT_adj <- (raw_adj_2$FT - (raw_adj_2$oFT_adj.x - season_lg_avg$FT))
+    # raw_adj_2$FTR_adj <- (raw_adj_2$FTR - (raw_adj_2$oFTR_adj.x - season_lg_avg$FTR))
+    # raw_adj_2$ORB_adj <- (raw_adj_2$ORB + (raw_adj_2$oDRB_adj.x - season_lg_avg$DRB))
+    # raw_adj_2$DRB_adj <- (raw_adj_2$DRB - (raw_adj_2$oORB_adj.x - season_lg_avg$ORB))
+    # raw_adj_2$TRB_adj <- (raw_adj_2$TRB + (raw_adj_2$oTRB_adj.x - season_lg_avg$TRB))
+    # raw_adj_2$AST_adj <- (raw_adj_2$AST - (raw_adj_2$oAST_adj.x - season_lg_avg$AST))
+    # raw_adj_2$TOV_adj <- (raw_adj_2$TOV - (raw_adj_2$oTOV_adj.x - season_lg_avg$TOV))
+    # raw_adj_2$STL_adj <- (raw_adj_2$STL - (raw_adj_2$oSTL_adj.x - season_lg_avg$STL))
+    # raw_adj_2$BLK_adj <- (raw_adj_2$BLK - (raw_adj_2$oBLK_adj.x - season_lg_avg$BLK))
+    # raw_adj_2$PF_adj <- (raw_adj_2$PF - (raw_adj_2$oPF_adj.x - season_lg_avg$PF))
+    # raw_adj_2$eFG_adj <- (raw_adj_2$eFG - (raw_adj_2$oeFG_adj.x - season_lg_avg$eFG))
+    # raw_adj_2$TS_adj <- (raw_adj_2$TS - (raw_adj_2$oTS_adj.x - season_lg_avg$TS))
+    # raw_adj_2$ExpPace <- (season_lg_avg$Pace + (raw_adj_2$Pace - season_lg_avg$Pace) +
+    #                           (raw_adj_2$Pace_adj.x - season_lg_avg$Pace))
+    # raw_adj_2$PaceDiff <- (raw_adj_2$Pace - raw_adj_2$ExpPace)
+    # raw_adj_2$PaceR <- (raw_adj_2$Pace_adj.y / (raw_adj_2$Pace_adj.y + raw_adj_2$Pace_adj.x))
+    # raw_adj_2$oPaceR <- (raw_adj_2$Pace_adj.x / (raw_adj_2$Pace_adj.y + raw_adj_2$Pace_adj.x))
+    # raw_adj_2$Pace_adj <- (raw_adj_2$Pace_adj.y + (raw_adj_2$PaceDiff * raw_adj_2$PaceR))
+    # raw_adj_2$ORtg_adj <- (raw_adj_2$ORtg - (raw_adj_2$DRtg_adj.x - season_lg_avg$DRtg))
+    # raw_adj_2$DRtg_adj <- (raw_adj_2$DRtg - (raw_adj_2$ORtg_adj.x - season_lg_avg$ORtg))
+    # 
+    # raw_adj_2$oFG_adj <- (raw_adj_2$oFG - (raw_adj_2$FG_adj.y - season_lg_avg$FG))
+    # raw_adj_2$oSR2_adj <- (raw_adj_2$oSR2 - (raw_adj_2$SR2_adj.y - season_lg_avg$SR2))
+    # raw_adj_2$oFG3_adj <- (raw_adj_2$oFG3 - (raw_adj_2$FG3_adj.y - season_lg_avg$FG3 ))
+    # raw_adj_2$oSR3_adj <- (raw_adj_2$oSR3 - (raw_adj_2$SR3_adj.y - season_lg_avg$SR3))
+    # raw_adj_2$oFT_adj <- (raw_adj_2$oFT - (raw_adj_2$FT_adj.y - season_lg_avg$FT))
+    # raw_adj_2$oFTR_adj <- (raw_adj_2$oFTR - (raw_adj_2$FTR_adj.y - season_lg_avg$FTR))
+    # raw_adj_2$oORB_adj <- (raw_adj_2$oORB + (raw_adj_2$DRB_adj.y - season_lg_avg$DRB))
+    # raw_adj_2$oDRB_adj <- (raw_adj_2$oDRB - (raw_adj_2$ORB_adj.y - season_lg_avg$ORB))
+    # raw_adj_2$oTRB_adj <- (raw_adj_2$oTRB + (raw_adj_2$TRB_adj.y - season_lg_avg$TRB))
+    # raw_adj_2$oAST_adj <- (raw_adj_2$oAST - (raw_adj_2$AST_adj.y - season_lg_avg$AST))
+    # raw_adj_2$oTOV_adj <- (raw_adj_2$oTOV - (raw_adj_2$TOV_adj.y - season_lg_avg$TOV))
+    # raw_adj_2$oSTL_adj <- (raw_adj_2$oSTL - (raw_adj_2$STL_adj.y - season_lg_avg$STL))
+    # raw_adj_2$oBLK_adj <- (raw_adj_2$oBLK - (raw_adj_2$BLK_adj.y - season_lg_avg$BLK))
+    # raw_adj_2$oPF_adj <- (raw_adj_2$oPF - (raw_adj_2$PF_adj.y - season_lg_avg$PF))
+    # raw_adj_2$oeFG_adj <- (raw_adj_2$oeFG - (raw_adj_2$eFG_adj.y - season_lg_avg$eFG))
+    # raw_adj_2$oTS_adj <- (raw_adj_2$oTS - (raw_adj_2$TS_adj.y - season_lg_avg$TS))
+    # 
+    # ### GROUP ROUND 2 ADJUSTMENTS
+    # 
+    # season_adj_round_2 <- raw_adj_2 %>%
+    #     select(2,109:124,132:147,130,131,129) %>%
+    #     group_by(teamName) %>%
+    #     summarise(across(where(is.numeric), mean))
+    # 
+    # home_adj_round_2 <- raw_adj_2 %>%
+    #     select(1,2,109:124,132:147,130,131,129) %>%
+    #     filter(teamLoc == "H") %>%
+    #     group_by(teamName) %>%
+    #     summarise(across(where(is.numeric), mean))
+    # 
+    # away_adj_round_2 <- raw_adj_2 %>%
+    #     select(1,2,109:124,132:147,130,131,129) %>%
+    #     filter(teamLoc == "A") %>%
+    #     group_by(teamName) %>%
+    #     summarise(across(where(is.numeric), mean))
+    # 
+    # ######### ROUND 3 ADJUSTMENTS ########
+    # 
+    # #Joining for oppt stats
+    # raw_adj_home_3 <- raw_final %>%
+    #     left_join(away_adj_round_2, by = c("opptName" = "teamName")) %>%
+    #     left_join(., home_adj_round_2, by = c("teamName" = "teamName")) %>%
+    #     filter(teamLoc == "H")
+    # #Joining for team stats
+    # raw_adj_away_3 <- raw_final %>%
+    #     left_join(home_adj_round_2, by = c("opptName" = "teamName")) %>%
+    #     left_join(., away_adj_round_2, by = c("teamName" = "teamName")) %>%
+    #     filter(teamLoc == "A")
+    # 
+    # raw_adj_3 <- bind_rows(raw_adj_home_3,raw_adj_away_3)
+    # 
+    # #.x = oppt avg, .y = team avg, no tail = game actual
+    # 
+    # raw_adj_3$FG_adj <- (raw_adj_3$FG - (raw_adj_3$oFG_adj.x - season_lg_avg$FG))
+    # raw_adj_3$SR2_adj <- (raw_adj_3$SR2 - (raw_adj_3$oSR2_adj.x - season_lg_avg$SR2))
+    # raw_adj_3$FG3_adj <- (raw_adj_3$FG3 - (raw_adj_3$oFG3_adj.x - season_lg_avg$FG3 ))
+    # raw_adj_3$SR3_adj <- (raw_adj_3$SR3 - (raw_adj_3$oSR3_adj.x - season_lg_avg$SR3))
+    # raw_adj_3$FT_adj <- (raw_adj_3$FT - (raw_adj_3$oFT_adj.x - season_lg_avg$FT))
+    # raw_adj_3$FTR_adj <- (raw_adj_3$FTR - (raw_adj_3$oFTR_adj.x - season_lg_avg$FTR))
+    # raw_adj_3$ORB_adj <- (raw_adj_3$ORB + (raw_adj_3$oDRB_adj.x - season_lg_avg$DRB))
+    # raw_adj_3$DRB_adj <- (raw_adj_3$DRB - (raw_adj_3$oORB_adj.x - season_lg_avg$ORB))
+    # raw_adj_3$TRB_adj <- (raw_adj_3$TRB + (raw_adj_3$oTRB_adj.x - season_lg_avg$TRB))
+    # raw_adj_3$AST_adj <- (raw_adj_3$AST - (raw_adj_3$oAST_adj.x - season_lg_avg$AST))
+    # raw_adj_3$TOV_adj <- (raw_adj_3$TOV - (raw_adj_3$oTOV_adj.x - season_lg_avg$TOV))
+    # raw_adj_3$STL_adj <- (raw_adj_3$STL - (raw_adj_3$oSTL_adj.x - season_lg_avg$STL))
+    # raw_adj_3$BLK_adj <- (raw_adj_3$BLK - (raw_adj_3$oBLK_adj.x - season_lg_avg$BLK))
+    # raw_adj_3$PF_adj <- (raw_adj_3$PF - (raw_adj_3$oPF_adj.x - season_lg_avg$PF))
+    # raw_adj_3$eFG_adj <- (raw_adj_3$eFG - (raw_adj_3$oeFG_adj.x - season_lg_avg$eFG))
+    # raw_adj_3$TS_adj <- (raw_adj_3$TS - (raw_adj_3$oTS_adj.x - season_lg_avg$TS))
+    # raw_adj_3$ExpPace <- (season_lg_avg$Pace + (raw_adj_3$Pace - season_lg_avg$Pace) +
+    #                           (raw_adj_3$Pace_adj.x - season_lg_avg$Pace))
+    # raw_adj_3$PaceDiff <- (raw_adj_3$Pace - raw_adj_3$ExpPace)
+    # raw_adj_3$PaceR <- (raw_adj_3$Pace_adj.y / (raw_adj_3$Pace_adj.y + raw_adj_3$Pace_adj.x))
+    # raw_adj_3$oPaceR <- (raw_adj_3$Pace_adj.x / (raw_adj_3$Pace_adj.y + raw_adj_3$Pace_adj.x))
+    # raw_adj_3$Pace_adj <- (raw_adj_3$Pace_adj.y + (raw_adj_3$PaceDiff * raw_adj_3$PaceR))
+    # raw_adj_3$ORtg_adj <- (raw_adj_3$ORtg - (raw_adj_3$DRtg_adj.x - season_lg_avg$DRtg))
+    # raw_adj_3$DRtg_adj <- (raw_adj_3$DRtg - (raw_adj_3$ORtg_adj.x - season_lg_avg$ORtg))
+    # 
+    # raw_adj_3$oFG_adj <- (raw_adj_3$oFG - (raw_adj_3$FG_adj.y - season_lg_avg$FG))
+    # raw_adj_3$oSR2_adj <- (raw_adj_3$oSR2 - (raw_adj_3$SR2_adj.y - season_lg_avg$SR2))
+    # raw_adj_3$oFG3_adj <- (raw_adj_3$oFG3 - (raw_adj_3$FG3_adj.y - season_lg_avg$FG3 ))
+    # raw_adj_3$oSR3_adj <- (raw_adj_3$oSR3 - (raw_adj_3$SR3_adj.y - season_lg_avg$SR3))
+    # raw_adj_3$oFT_adj <- (raw_adj_3$oFT - (raw_adj_3$FT_adj.y - season_lg_avg$FT))
+    # raw_adj_3$oFTR_adj <- (raw_adj_3$oFTR - (raw_adj_3$FTR_adj.y - season_lg_avg$FTR))
+    # raw_adj_3$oORB_adj <- (raw_adj_3$oORB + (raw_adj_3$DRB_adj.y - season_lg_avg$DRB))
+    # raw_adj_3$oDRB_adj <- (raw_adj_3$oDRB - (raw_adj_3$ORB_adj.y - season_lg_avg$ORB))
+    # raw_adj_3$oTRB_adj <- (raw_adj_3$oTRB + (raw_adj_3$TRB_adj.y - season_lg_avg$TRB))
+    # raw_adj_3$oAST_adj <- (raw_adj_3$oAST - (raw_adj_3$AST_adj.y - season_lg_avg$AST))
+    # raw_adj_3$oTOV_adj <- (raw_adj_3$oTOV - (raw_adj_3$TOV_adj.y - season_lg_avg$TOV))
+    # raw_adj_3$oSTL_adj <- (raw_adj_3$oSTL - (raw_adj_3$STL_adj.y - season_lg_avg$STL))
+    # raw_adj_3$oBLK_adj <- (raw_adj_3$oBLK - (raw_adj_3$BLK_adj.y - season_lg_avg$BLK))
+    # raw_adj_3$oPF_adj <- (raw_adj_3$oPF - (raw_adj_3$PF_adj.y - season_lg_avg$PF))
+    # raw_adj_3$oeFG_adj <- (raw_adj_3$oeFG - (raw_adj_3$eFG_adj.y - season_lg_avg$eFG))
+    # raw_adj_3$oTS_adj <- (raw_adj_3$oTS - (raw_adj_3$TS_adj.y - season_lg_avg$TS))
+    # 
+    # ### GROUP ROUND 3 ADJUSTMENTS
+    # 
+    # season_adj_round_3 <- raw_adj_3 %>%
+    #     select(2,109:124,132:147,130,131,129) %>%
+    #     group_by(teamName) %>%
+    #     summarise(across(where(is.numeric), mean))
+    # 
+    # home_adj_round_3 <- raw_adj_3 %>%
+    #     select(1,2,109:124,132:147,130,131,129) %>%
+    #     filter(teamLoc == "H") %>%
+    #     group_by(teamName) %>%
+    #     summarise(across(where(is.numeric), mean))
+    # 
+    # away_adj_round_3 <- raw_adj_3 %>%
+    #     select(1,2,109:124,132:147,130,131,129) %>%
+    #     filter(teamLoc == "A") %>%
+    #     group_by(teamName) %>%
+    #     summarise(across(where(is.numeric), mean))
     
     ### Weighting Data frames ###
     
-    season_uw <- raw_adj_3 %>%
+    season_uw <- raw_adj %>%
         select(2,109:124,132:147,130,131,129)
     
-    home_uw <- raw_adj_3 %>%
+    home_uw <- raw_adj %>%
         select(1,2,109:124,132:147,130,131,129) %>%
         filter(teamLoc == "H")
     
-    away_uw <- raw_adj_3 %>%
+    away_uw <- raw_adj %>%
         select(1,2,109:124,132:147,130,131,129) %>%
         filter(teamLoc == "A")
     

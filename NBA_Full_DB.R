@@ -9,8 +9,6 @@ library(tictoc)
 
 Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
 
-rm(list=ls())
-
 # tic()
 
 # TeamShots missing: 21201214_1610612754 & 21201214_1610612738
@@ -67,7 +65,7 @@ rm(list=ls())
 NBAdb <- DBI::dbConnect(RSQLite::SQLite(), 
                         "/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/NBAdb.sqlite")
 # NBAdb
-# DBI::dbListTables(NBAdb)
+DBI::dbListTables(NBAdb)
 
 
 # DBI::dbWriteTable(NBAdb, "GameLogsTeam", dataGameLogsTeam, append = T)
@@ -82,9 +80,12 @@ NBAdb <- DBI::dbConnect(RSQLite::SQLite(),
 # DBI::dbWriteTable(NBAdb, "BoxScorePlayer", dataBoxScorePlayerNBA, append = T)
 # DBI::dbWriteTable(NBAdb, "BoxScoreTeam", dataBoxScoreTeamNBA, append = T)
 # DBI::dbWriteTable(NBAdb, "TeamDictionary", team_dict)
-# DBI::dbWriteTable(NBAdb, "BoxScoreBREF", master_vorp, append = T)
+# DBI::dbWriteTable(NBAdb, "BasicBoxScoreBREF", master_fic)
+# DBI::dbWriteTable(NBAdb, "AdvancedBoxScoreBREF", master_vorp)
+# DBI::dbWriteTable(NBAdb, "GamesBREF", df)
 
-## fix dates: df$dateGame <- as.Date(df$dateGame, origin ="1970-01-01")
+### FIX DATES ### 
+# df$dateGame <- as.Date(df$dateGame, origin ="1970-01-01")
 
 
 DBI::dbDisconnect(NBAdb)
@@ -94,7 +95,7 @@ DBI::dbDisconnect(NBAdb)
 ## how to query
 df <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),
                                    "/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/NBAdb.sqlite"),
-                                   "BoxScoreBREF")
+                                   "BasicBoxScoreBREF")
 
 df <- df %>%
     collect()
@@ -141,7 +142,7 @@ df <- df %>%
 # DBI::dbListTables(NBAdb)
 
 ## remove old data
-# DBI::dbRemoveTable(NBAdb, "BoxScoreBRED")
+# DBI::dbRemoveTable(NBAdb, "BoxScoreBREF")
 
 ## rename new data by remove "_tmp"
 # DBI::dbExecute(con, "ALTER TABLE flights_tmp RENAME TO flights;")
@@ -150,8 +151,6 @@ df <- df %>%
 
 
 
-
-    
 
 
 
