@@ -8,11 +8,11 @@ setwd("/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/")
 ########
 # PARAMETERS
 ########
-# year <- "2022"
-# monthList <- c("october", "november", "december", "january", "february",
-#                "march", "april")
-# playoff_startDate <- ymd("2022-04-12")
-# outputfile <- "NBA-2022_game_data.rds"
+year <- "2022"
+monthList <- c("october", "november", "december", "january", "february",
+               "march", "april")
+playoff_startDate <- ymd("2022-04-12")
+outputfile <- "NBA-2022_game_data.rds"
 # 
 # year <- "2021"
 # monthList <- c("december", "january", "february",

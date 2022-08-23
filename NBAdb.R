@@ -9,7 +9,7 @@ Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
 rm(list=ls())
 setwd("/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/")
 
-fn <- "NBAdb1722_oneadj_lg"
+fn <- "NBAdb1722_threeadj"
 u <- paste0("/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/",fn,".xlsx")
 
 final_db <- data.frame()
@@ -24,7 +24,7 @@ dates17 <- dataGameLogsTeam %>%
     distinct(dateGame) %>%
     mutate(stat_start = min(dateGame)) %>%
     mutate(stat_end = dateGame - 1) %>%
-    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 20, 0, 1))
+    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 21, 0, 1))
 
 dates17[c(1:11),3] <- dates17[c(1:11),1]
 
@@ -33,7 +33,7 @@ dates18 <- dataGameLogsTeam %>%
     distinct(dateGame) %>%
     mutate(stat_start = min(dateGame)) %>%
     mutate(stat_end = dateGame - 1) %>%
-    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 20, 0, 1))
+    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 21, 0, 1))
 
 dates18[c(1:11),3] <- dates18[c(1:11),1]
 
@@ -42,7 +42,7 @@ dates19 <- dataGameLogsTeam %>%
     distinct(dateGame) %>%
     mutate(stat_start = min(dateGame)) %>%
     mutate(stat_end = dateGame - 1) %>%
-    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 20, 0, 1))
+    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 21, 0, 1))
 
 dates19[c(1:11),3] <- dates19[c(1:11),1]
 
@@ -51,30 +51,32 @@ dates20 <- dataGameLogsTeam %>%
     distinct(dateGame) %>%
     mutate(stat_start = min(dateGame)) %>%
     mutate(stat_end = dateGame - 1) %>%
-    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 20, 0, 1))
+    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 21, 0, 1))
 
 dates20[c(1:11),3] <- dates20[c(1:11),1]
 
 dates21 <- dataGameLogsTeam %>%
     filter(yearSeason == 2021) %>%
     distinct(dateGame) %>%
-    mutate(stat_start = min(dateGame - 1)) %>%
-    mutate(stat_end = dateGame) %>%
-    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 13, 0, 1))
+    mutate(stat_start = min(dateGame)) %>%
+    mutate(stat_end = dateGame - 1) %>%
+    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 14, 0, 1))
 
 dates21[c(1:11),3] <- dates21[c(1:11),1]
 
 dates22 <- dataGameLogsTeam %>%
     filter(yearSeason == 2022) %>%
     distinct(dateGame) %>%
-    mutate(stat_start = min(dateGame - 1)) %>%
-    mutate(stat_end = dateGame) %>%
-    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 20, 0, 1))
+    mutate(stat_start = min(dateGame)) %>%
+    mutate(stat_end = dateGame - 1) %>%
+    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 21, 0, 1))
 
 dates22[c(1:11),3] <- dates22[c(1:11),1]
 
 dates <- as.data.frame(bind_rows(dates22, dates21, dates20, dates19, dates18, dates17))
 # dates <- dates %>% filter(dateGame > "2022-03-19")
+
+# dates_no_adj <- dates
 
 dates_no_adj <- dates %>%
     filter(adj == 0)
@@ -1687,14 +1689,14 @@ for (b in b:h) {
     colnames(scores)[7:76] <- c("FG_away","SR2_away","FG3_away","SR3_away","FT_away","FTR_away",
                                 "ORB_away","DRB_away","TRB_away","AST_away","TOV_away","STL_away",
                                 "BLK_away","PF_away","eFG_away","TS_away",
-                                "oFG_away","oSR2away","oFG3_away","oSR3_away","oFT_away","oFTR_away",
+                                "oFG_away","oSR2_away","oFG3_away","oSR3_away","oFT_away","oFTR_away",
                                 "oORB_away","oDRB_away","oTRB_away","oAST_away","oTOV_away","oSTL_away",
                                 "oBLK_away","oPF_away","oeFG_away","oTS_away",
                                 "ORtg_away","DRtg_away","Pace_away",
                                 "FG_home","SR2_home","FG3_home","SR3_home","FT_home","FTR_home",
                                 "ORB_home","DRB_home","TRB_home","AST_home","TOV_home","STL_home",
                                 "BLK_home","PF_home","eFG_home","TS_home",
-                                "oFG_home","oSR2home","oFG3_home","oSR3_home","oFT_home","oFTR_home",
+                                "oFG_home","oSR2_home","oFG3_home","oSR3_home","oFT_home","oFTR_home",
                                 "oORB_home","oDRB_home","oTRB_home","oAST_home","oTOV_home","oSTL_home",
                                 "oBLK_home","oPF_home","oeFG_home","oTS_home",
                                 "ORtg_home","DRtg_home","Pace_home")
@@ -1719,6 +1721,3 @@ addWorksheet(wb, sheetName = "final_db")
 writeData(wb, sheet = "final_db", x = final_db)
 
 saveWorkbook(wb, file = u)
-
-
-
