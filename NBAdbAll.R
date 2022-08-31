@@ -57,6 +57,30 @@ Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
 #     return_message = TRUE
 # )
 
+## NBA.com player stats - ADD TO DATABASE *********
+# teams_players_stats(seasons = 2022,
+#                     season_types = "Regular Season",
+#                     types = "player",
+#                     tables = "general",
+#                     measures = c("Base","Advanced","Four Factors","Misc","Oppenent","Scoring","Usage"),
+#                     modes = c("PerGame","Totals"),
+#                     assign_to_environment = TRUE
+# )
+# 
+# teams_players_stats(seasons = 2022,
+#                     season_types = "Regular Season",
+#                     types = "player",
+#                     tables = "general",
+#                     measures = "Advanced",
+#                     modes = "PerGame",
+#                     assign_to_environment = TRUE
+# )
+# 
+# teams_players_stats(seasons = 2022, types = "player",
+#                     modes = c("PerGame", "Totals"),
+#                     tables = c("general", "defense", "clutch", "hustle", "shots", "shot locations"),
+#                     assign_to_environment = TRUE)
+
 
 
 
@@ -79,7 +103,7 @@ DBI::dbListTables(NBAdb)
 # DBI::dbWriteTable(NBAdb, "PlayByPlay", play_logs_all, append = T)
 # DBI::dbWriteTable(NBAdb, "BoxScorePlayer", dataBoxScorePlayerNBA, append = T)
 # DBI::dbWriteTable(NBAdb, "BoxScoreTeam", dataBoxScoreTeamNBA, append = T)
-# DBI::dbWriteTable(NBAdb, "TeamDictionary", team_dict)
+# DBI::dbWriteTable(NBAdb, "TeamDictionary", team_dict, overwrite = T)
 # DBI::dbWriteTable(NBAdb, "BasicBoxScoreBREF", master_fic)
 # DBI::dbWriteTable(NBAdb, "AdvancedBoxScoreBREF", master_vorp)
 # DBI::dbWriteTable(NBAdb, "GamesBREF", df)
@@ -95,7 +119,7 @@ DBI::dbDisconnect(NBAdb)
 ## how to query
 df <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),
                                    "/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/NBAdb.sqlite"),
-                                   "BasicBoxScoreBREF")
+                                   "TeamDictionary")
 
 df <- df %>%
     collect()
@@ -148,16 +172,4 @@ df <- df %>%
 # DBI::dbExecute(con, "ALTER TABLE flights_tmp RENAME TO flights;")
 
 
-
-
-
-
-
-
-
-
-
-
-    
-    
     
