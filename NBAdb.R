@@ -9,79 +9,41 @@ Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
 rm(list=ls())
 setwd("/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/")
 
-fn <- "NBAdb1722_threeadj"
+fn <- "NBAdb1422_Adj"
 u <- paste0("/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/",fn,".xlsx")
 
 final_db <- data.frame()
 
-game_logs(seasons = c(2017:2022), result_types = c("team","players"))
+dataGameLogsTeam  <- game_logs(seasons = c(2014:2022), result_types = "team")
 
 dataGameLogsTeam <- dataGameLogsTeam %>% arrange(dateGame,idGame)
 dataGameLogsTeam$dateGame <- as_date(dataGameLogsTeam$dateGame)
 
-dates17 <- dataGameLogsTeam %>%
-    filter(yearSeason == 2017) %>%
-    distinct(dateGame) %>%
-    mutate(stat_start = min(dateGame)) %>%
-    mutate(stat_end = dateGame - 1) %>%
-    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 21, 0, 1))
+yr_list <- unique(dataGameLogsTeam$yearSeason)
+games_df <- data.frame()
 
-dates17[c(1:11),3] <- dates17[c(1:11),1]
+for (i in yr_list) {
+    holder <- dataGameLogsTeam %>%
+        filter(yearSeason == i) %>%
+        distinct(dateGame, yearSeason) %>%
+        mutate(stat_start = min(dateGame)) %>%
+        mutate(stat_end = dateGame - 1) %>%
+        mutate(keep = if_else(dateGame >= (min(as.Date(dateGame)) + 14) & dateGame <= (max(as.Date(dateGame)) - 14), 
+                             1, 0)) %>%
+        mutate(adj = if_else(dateGame >= min(as.Date(dateGame)) + 21, 1, 0)) %>%
+        filter(keep == 1) %>%
+        select(1,2,3,4,6)
+    
+    games_df <- rbind(games_df, holder)
+    
+}
 
-dates18 <- dataGameLogsTeam %>%
-    filter(yearSeason == 2018) %>%
-    distinct(dateGame) %>%
-    mutate(stat_start = min(dateGame)) %>%
-    mutate(stat_end = dateGame - 1) %>%
-    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 21, 0, 1))
+# dates_no_adj <- games_df
 
-dates18[c(1:11),3] <- dates18[c(1:11),1]
-
-dates19 <- dataGameLogsTeam %>%
-    filter(yearSeason == 2019) %>%
-    distinct(dateGame) %>%
-    mutate(stat_start = min(dateGame)) %>%
-    mutate(stat_end = dateGame - 1) %>%
-    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 21, 0, 1))
-
-dates19[c(1:11),3] <- dates19[c(1:11),1]
-
-dates20 <- dataGameLogsTeam %>%
-    filter(yearSeason == 2020) %>%
-    distinct(dateGame) %>%
-    mutate(stat_start = min(dateGame)) %>%
-    mutate(stat_end = dateGame - 1) %>%
-    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 21, 0, 1))
-
-dates20[c(1:11),3] <- dates20[c(1:11),1]
-
-dates21 <- dataGameLogsTeam %>%
-    filter(yearSeason == 2021) %>%
-    distinct(dateGame) %>%
-    mutate(stat_start = min(dateGame)) %>%
-    mutate(stat_end = dateGame - 1) %>%
-    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 14, 0, 1))
-
-dates21[c(1:11),3] <- dates21[c(1:11),1]
-
-dates22 <- dataGameLogsTeam %>%
-    filter(yearSeason == 2022) %>%
-    distinct(dateGame) %>%
-    mutate(stat_start = min(dateGame)) %>%
-    mutate(stat_end = dateGame - 1) %>%
-    mutate(adj = if_else(dateGame <= min(as.Date(dateGame)) + 21, 0, 1))
-
-dates22[c(1:11),3] <- dates22[c(1:11),1]
-
-dates <- as.data.frame(bind_rows(dates22, dates21, dates20, dates19, dates18, dates17))
-# dates <- dates %>% filter(dateGame > "2022-03-19")
-
-# dates_no_adj <- dates
-
-dates_no_adj <- dates %>%
+dates_no_adj <- games_df %>%
     filter(adj == 0)
 
-dates_adj <- dates %>%
+dates_adj <- games_df %>%
     filter(adj == 1)
 
 #### No ADJ + Weights ####
