@@ -53,10 +53,10 @@ h <- nrow(dates_no_adj)
 
 for (b in b:h) {
     
-    stats_start_gxg <- dates_no_adj[b,2]
-    stats_end_gxg <- dates_no_adj[b,3]
+    stats_start_gxg <- dates_no_adj[b,3]
+    stats_end_gxg <- dates_no_adj[b,4]
     
-    gm_day_gxg <- dates_no_adj[b,1]
+    gm_day_gxg <- dates_no_adj[b,2]
     
     stat_range <- dataGameLogsTeam %>% filter(dateGame >= stats_start_gxg & dateGame <= stats_end_gxg)
     
@@ -68,9 +68,10 @@ for (b in b:h) {
     gl <- left_join(stat_range, stat_range, by = c("idGame" = "idGame", "slugTeam" = "slugOpponent"))
     
     gl <- gl %>%
-        select(13,8,17,62,7,45,90,34,79,
-               24,25,27,28,35,36,37,38,39,40,43,41,42,44,
-               69,70,72,73,80,81,82,83,84,85,88,86,87,89)
+        select(5,13,8,54,21,
+               45,90,34,79,
+               23,24,26,27,35,36,37,38,39,40,43,41,42,44,
+               68,69,71,72,80,81,82,83,84,85,88,86,87,89)
     
     colnames(gl) <- c("Date", "teamLoc", "teamName", "opptName", "teamRslt", 
                       "teamPTS", "opptPTS", "teamMin", "opptMin", 
@@ -660,9 +661,9 @@ for (b in b:h) {
     ##### Scores Only ####
     
     scores <- game_range %>%
-        select(13,8,62,17,90,45)
+        select(1,5,13,54,8,90,45)
     
-    colnames(scores) <- c("Date", "Loc", "Away", "Home", "AS", "HS")
+    colnames(scores) <- c("Season", "Date", "Loc", "Away", "Home", "AS", "HS")
     
     scores <- scores %>%
         filter(Loc == "H" & Date == gm_day_gxg)
@@ -670,17 +671,17 @@ for (b in b:h) {
     scores <- left_join(scores, away_final_wt, by = c("Away" = "Team")) %>%
         left_join(., home_final_wt, by = c("Home" = "Team")) 
     
-    colnames(scores)[7:76] <- c("FG_away","SR2_away","FG3_away","SR3_away","FT_away","FTR_away",
+    colnames(scores)[8:77] <- c("FG_away","SR2_away","FG3_away","SR3_away","FT_away","FTR_away",
                                 "ORB_away","DRB_away","TRB_away","AST_away","TOV_away","STL_away",
                                 "BLK_away","PF_away","eFG_away","TS_away",
-                                "oFG_away","oSR2away","oFG3_away","oSR3_away","oFT_away","oFTR_away",
+                                "oFG_away","oSR2_away","oFG3_away","oSR3_away","oFT_away","oFTR_away",
                                 "oORB_away","oDRB_away","oTRB_away","oAST_away","oTOV_away","oSTL_away",
                                 "oBLK_away","oPF_away","oeFG_away","oTS_away",
                                 "ORtg_away","DRtg_away","Pace_away",
                                 "FG_home","SR2_home","FG3_home","SR3_home","FT_home","FTR_home",
                                 "ORB_home","DRB_home","TRB_home","AST_home","TOV_home","STL_home",
                                 "BLK_home","PF_home","eFG_home","TS_home",
-                                "oFG_home","oSR2home","oFG3_home","oSR3_home","oFT_home","oFTR_home",
+                                "oFG_home","oSR2_home","oFG3_home","oSR3_home","oFT_home","oFTR_home",
                                 "oORB_home","oDRB_home","oTRB_home","oAST_home","oTOV_home","oSTL_home",
                                 "oBLK_home","oPF_home","oeFG_home","oTS_home",
                                 "ORtg_home","DRtg_home","Pace_home")
@@ -699,10 +700,10 @@ h <- nrow(dates_adj)
 
 for (b in b:h) {
     
-    stats_start_gxg <- dates_adj[b,2]
-    stats_end_gxg <- dates_adj[b,3]
+    stats_start_gxg <- dates_adj[b,3]
+    stats_end_gxg <- dates_adj[b,4]
     
-    gm_day_gxg <- dates_adj[b,1]
+    gm_day_gxg <- dates_adj[b,2]
     
     stat_range <- dataGameLogsTeam %>% filter(dateGame >= stats_start_gxg & dateGame <= stats_end_gxg)
     
@@ -714,9 +715,10 @@ for (b in b:h) {
     gl <- left_join(stat_range, stat_range, by = c("idGame" = "idGame", "slugTeam" = "slugOpponent"))
     
     gl <- gl %>%
-        select(13,8,17,62,7,45,90,34,79,
-               24,25,27,28,35,36,37,38,39,40,43,41,42,44,
-               69,70,72,73,80,81,82,83,84,85,88,86,87,89)
+        select(5,13,8,54,21,
+               45,90,34,79,
+               23,24,26,27,35,36,37,38,39,40,43,41,42,44,
+               68,69,71,72,80,81,82,83,84,85,88,86,87,89)
     
     colnames(gl) <- c("Date", "teamLoc", "teamName", "opptName", "teamRslt", 
                       "teamPTS", "opptPTS", "teamMin", "opptMin", 
@@ -1638,17 +1640,17 @@ for (b in b:h) {
     ##### Scores Only ####
     
     scores <- game_range %>%
-        select(13,8,62,17,90,45)
+        select(1,5,13,54,8,90,45)
+    
+    colnames(scores) <- c("Season", "Date", "Loc", "Away", "Home", "AS", "HS")
     
     scores <- scores %>%
-        filter(locationGame.x == "H" & dateGame.x ==  gm_day_gxg)
-    
-    colnames(scores) <- c("Date", "Loc", "Away", "Home", "AS", "HS")
+        filter(Loc == "H" & Date == gm_day_gxg)
     
     scores <- left_join(scores, away_final_wt, by = c("Away" = "Team")) %>%
         left_join(., home_final_wt, by = c("Home" = "Team"))
     
-    colnames(scores)[7:76] <- c("FG_away","SR2_away","FG3_away","SR3_away","FT_away","FTR_away",
+    colnames(scores)[8:77] <- c("FG_away","SR2_away","FG3_away","SR3_away","FT_away","FTR_away",
                                 "ORB_away","DRB_away","TRB_away","AST_away","TOV_away","STL_away",
                                 "BLK_away","PF_away","eFG_away","TS_away",
                                 "oFG_away","oSR2_away","oFG3_away","oSR3_away","oFT_away","oFTR_away",
@@ -1673,7 +1675,7 @@ final_db$Margin <- final_db$AS - final_db$HS
 final_db$Win <- if_else(final_db$AS > final_db$HS, 1, 0)
 
 final_db <- final_db %>%
-    select(1:6,77,78,7:76) %>%
+    select(1:7,78,79,8:77) %>%
     arrange(Date)
 
 ##### EXPORT TO EXCEL ######
