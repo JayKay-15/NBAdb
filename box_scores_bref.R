@@ -8,12 +8,12 @@ setwd("/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/")
 ########
 # PARAMETERS
 ########
-year <- "2022"
+year <- "2023"
 monthList <- c("october", "november", "december", "january", "february",
                "march", "april")
-playoff_startDate <- ymd("2022-04-12")
-outputfile <- "NBA-2022_game_data.rds"
-# 
+playoff_startDate <- ymd("2023-04-10")
+outputfile <- "NBA_2023_game_data.rds"
+
 # year <- "2021"
 # monthList <- c("december", "january", "february",
 #                "march", "april", "may", "june", "july")
@@ -101,22 +101,26 @@ saveRDS(df, outputfile)
 
 ## Box Scores ----------------------------------------------------
 
-library(rvest)
-library(lubridate)
 library(tidyverse)
+library(lubridate)
+library(rvest)
 
-inputfile <- "/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/NBA-2022_game_data.rds"
-outputfile <- "/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/NBA_basic_box_score_adv.rds"
+inputfile <- "/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/NBA_2023_game_data.rds"
+outputfile <- "/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/NBA_2023_advanced_box_scores.rds"
+game_df <- as_tibble(readRDS(inputfile))
+adv_df <- as_tibble(readRDS(outputfile))
 
+game_df <- game_df %>% filter(date_game < Sys.Date()) %>% select(-arena_name)
+game_df <- subset(game_df, !(game_df$game_id %in% adv_df$game_id))
 
 ##############################
 # SCRIPT STARTS HERE - Advanced
 ##############################
-game_df <- as_tibble(readRDS(inputfile))
-
-game_df$date_game <- as.Date(game_df$date_game, origin ="1970-01-01")
-
-game_df <- game_df %>% filter(game_type=="Regular") %>% arrange(date_game)
+# game_df <- as_tibble(readRDS(inputfile))
+# 
+# game_df$date_game <- as.Date(game_df$date_game, origin ="1970-01-01")
+# 
+# game_df <- game_df %>% filter(game_type=="Regular") %>% arrange(date_game)
 
 master_df <- data.frame()
 
@@ -170,16 +174,24 @@ for (current_id in game_df$game_id) {
 }
 
 
-saveRDS(master_df, "/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb//NBA_advanced_box_scores.rds")
+master_df <- rbind(adv_df, master_df)
 
-
+saveRDS(master_df, "/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/NBA_2023_advanced_box_scores.rds")
 
 
 
 ##############################
 # SCRIPT STARTS HERE - Basic
 ##############################
+inputfile <- "/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/NBA_2023_game_data.rds"
+outputfile <- "/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/NBA_2023_basic_box_scores.rds"
 game_df <- as_tibble(readRDS(inputfile))
+basic_df <- as_tibble(readRDS(outputfile))
+
+game_df <- game_df %>% filter(date_game < Sys.Date()) %>% select(-arena_name)
+game_df <- subset(game_df, !(game_df$game_id %in% basic_df$game_id))
+
+# game_df <- as_tibble(readRDS(inputfile))
 
 master_df <- data.frame()
 
@@ -250,25 +262,34 @@ for (current_id in game_df$game_id) {
     master_df <- rbind(master_df,full_box)
 }
 
+master_df <- rbind(basic_df, master_df)
+
+saveRDS(master_df, "/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/NBA_2023_basic_box_scores.rds")
 
 
-saveRDS(master_df, "/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb//NBA_basic_box_scores.rds")
+
 
 
 
 ####### Adding FIC & VORP -----------------------------------------------
 
-df_basic <- as_tibble(readRDS("/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/NBA_basic_box_scores.rds"))
-df_adv <- as_tibble(readRDS("/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/NBA_advanced_box_scores.rds"))
+
+# VORP - Value Over Replacement Player (available since the 1973-74 season in the NBA); 
+# a box score estimate of the points per 100 TEAM possessions that a player contributed above a replacement-level (-2.0) player, 
+# translated to an average team and prorated to an 82-game season. Multiply by 2.70 to convert to wins over replacement. 
+# Please see the article About Box Plus/Minus (BPM) for more information.
+
+df_basic <- as_tibble(readRDS("/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/2023_NBA_basic_box_scores.rds"))
+df_adv <- as_tibble(readRDS("/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/2023_NBA_advanced_box_scores.rds"))
 
 
 
 # calculate fic
 
-fic <- df_basic
+fic <- df_adv
 
 fic$MP <- hms::as_hms(strptime(fic$MP, "%M:%S"))
-fic$MP <-round(period_to_seconds(hms(fic$MP))/60,3)
+fic$MP <- round(period_to_seconds(hms(fic$MP))/60,3)
 
 master_fic <- fic %>%
     mutate(FIC = round(PTS + ORB + (0.75*DRB) + AST + STL + BLK - (0.75*FGA) - (0.375*FTA) - TOV - (0.5*PF),1)) %>%
