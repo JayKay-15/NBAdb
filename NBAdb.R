@@ -237,7 +237,7 @@ setwd("/Users/Jesse/Documents/MyStuff/NBA Betting/NBAdb/")
 
 final_db <- data.frame()
 
-dataGameLogsTeam  <- game_logs(seasons = c(2023), result_types = "team")
+dataGameLogsTeam  <- game_logs(seasons = c(2014:2023), result_types = "team")
 
 dataGameLogsTeam <- dataGameLogsTeam %>% mutate(dateGame = as_date(dateGame)) %>% arrange(dateGame,idGame)
 
@@ -267,7 +267,7 @@ NBAdb <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),
 nba_gl <- NBAdb %>% collect() %>% mutate(date = as_date(date, origin ="1970-01-01")) %>% arrange(date)
 nba_gl$date %>% tail(1)
 
-last_date <- as_date(nba_gl$date %>% tail(1))
+last_date <- as_date(max(nba_gl$date))
 
 games_df <- games_df %>% filter(dateGame > last_date)
 
@@ -1766,12 +1766,3 @@ NBAdb <- DBI::dbConnect(RSQLite::SQLite(),
 DBI::dbWriteTable(NBAdb, "GameLogsAdj", final_db, append = T)
 
 DBI::dbDisconnect(NBAdb)
-
-
-
-
-
-
-
-
-
