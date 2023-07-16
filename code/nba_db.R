@@ -24,7 +24,7 @@ games <- team_logs %>%
 
 
 ### Database Builder ---------------------------------------------------
-NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "./nba_db_sqlite")
+NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "./nba_db.sqlite")
 
 # GameLogsTeam & GameLogsPlayer & PlayerDictionary
 game_logs(seasons = c(2010:2023), result_types = c("team","players"))
