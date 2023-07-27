@@ -37,7 +37,7 @@ for (i in yr_list) {
     
 }
 
-NBAdb <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "./nba_db.sqlite"),"GameLogsAdj")
+NBAdb <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db"),"GameLogsAdj")
 
 nba_gl <- NBAdb %>% collect() %>% mutate(date = as_date(date, origin ="1970-01-01")) %>% arrange(date)
 nba_gl$date %>% tail(1)
@@ -1535,7 +1535,7 @@ final_db <- final_db %>%
 
 ## connect to SQL database--------------------------------------------------------
 
-# NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "./nba_db.sqlite")
+# NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db")
 
 DBI::dbWriteTable(NBAdb, "GameLogsAdj", final_db, append = T)
 

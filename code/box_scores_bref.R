@@ -1,7 +1,7 @@
 ###### to get game ids ------------------------------------------
-
-library(rvest)
+library(tidyverse)
 library(lubridate)
+library(rvest)
 
 ########
 # PARAMETERS
@@ -98,10 +98,6 @@ df$box_score_text <- NULL
 saveRDS(df, outputfile)
 
 ## Box Scores ----------------------------------------------------
-
-library(tidyverse)
-library(lubridate)
-library(rvest)
 
 inputfile <- "./box_scores/NBA_2023_game_data.rds"
 outputfile <- "./box_scores/NBA_2023_advanced_box_scores.rds"

@@ -24,16 +24,16 @@ games <- team_logs %>%
 
 
 ### Database Builder ---------------------------------------------------
-NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "./nba_db.sqlite")
+NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db")
 
 # GameLogsTeam & GameLogsPlayer & PlayerDictionary
 game_logs(seasons = c(2010:2023), result_types = c("team","players"))
 
-dataGameLogsTeam_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "./nba_db_sqlite"),"GameLogsTeam") %>%
+dataGameLogsTeam_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db"),"GameLogsTeam") %>%
     collect() %>% 
     mutate(dateGame = as_date(dateGame, origin ="1970-01-01"))
 
-dataGameLogsPlayer_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "./nba_db_sqlite"),"GameLogsPlayer") %>%
+dataGameLogsPlayer_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db"),"GameLogsPlayer") %>%
     collect() %>% 
     mutate(dateGame = as_date(dateGame, origin ="1970-01-01"))
 
@@ -42,17 +42,17 @@ dataGameLogsTeam <- dataGameLogsTeam %>% filter(!idGame %in% dataGameLogsTeam_db
 dataGameLogsPlayer <- dataGameLogsPlayer %>% filter(!idGame %in% dataGameLogsPlayer_db$idGame)
 
 # PlayerAdvanced & PlayerTotals & PlayerPerGame
-dataBREFPlayerAdvanced_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "./nba_db_sqlite"),"PlayerAdvanced") %>%
+dataBREFPlayerAdvanced_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db"),"PlayerAdvanced") %>%
     collect() %>%
     filter(isSeasonCurrent == FALSE) %>% 
     mutate(isSeasonCurrent = FALSE)
 
-dataBREFPlayerTotals_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"./nba_db_sqlite"),"PlayerTotals") %>%
+dataBREFPlayerTotals_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"../nba_sql_db/nba_db"),"PlayerTotals") %>%
     collect() %>%
     filter(isSeasonCurrent == FALSE) %>% 
     mutate(isSeasonCurrent = FALSE)
 
-dataBREFPlayerPerGame_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"./nba_db_sqlite"),"PlayerPerGame") %>%
+dataBREFPlayerPerGame_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"../nba_sql_db/nba_db"),"PlayerPerGame") %>%
     collect() %>%
     filter(isSeasonCurrent == FALSE) %>% 
     mutate(isSeasonCurrent = FALSE)
@@ -65,7 +65,7 @@ dataBREFPlayerPerGame <- dataBREFPlayerPerGame %>% bind_rows(dataBREFPlayerPerGa
 
 
 ## TeamShots
-TeamShots_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"./nba_db_sqlite"),"TeamShots") %>% collect()
+TeamShots_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"../nba_sql_db/nba_db"),"TeamShots") %>% collect()
 
 TeamShots_new <- teams_shots(team_ids = unique(team_logs$idTeam),
                          seasons = 2023, season_types = "Regular Season", all_active_teams = T)
@@ -77,7 +77,7 @@ players <- player_profiles(player_ids = unique(TeamShots_db$idPlayer))
 
 
 ## play by play
-PlayByPlay_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"./nba_db_sqlite"),"PlayByPlay") %>% collect()
+PlayByPlay_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"../nba_sql_db/nba_db"),"PlayByPlay") %>% collect()
 
 games_pbp <- games %>% filter(!idGame %in% PlayByPlay_db$idGame)
 
@@ -87,10 +87,10 @@ play_logs_all <- play_logs_all_new %>% filter(!idGame %in% PlayByPlay_db$idGame)
 
 
 ## box scores
-BoxScorePlayer_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"./nba_db_sqlite"),"BoxScorePlayer") %>%
+BoxScorePlayer_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"../nba_sql_db/nba_db"),"BoxScorePlayer") %>%
     collect()
 
-BoxScoreTeam_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"./nba_db_sqlite"),"BoxScoreTeam") %>%
+BoxScoreTeam_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"../nba_sql_db/nba_db"),"BoxScoreTeam") %>%
     collect()
 
 games_bs <- games %>% filter(!idGame %in% BoxScorePlayer_db$idGame)
@@ -119,7 +119,7 @@ nbastatR::bref_teams_stats(seasons = 2023)
 
 ## connect to SQL database--------------------------------------------------------
 
-NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "./nba_db_sqlite")
+NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db")
 # NBAdb
 DBI::dbListTables(NBAdb)
 
@@ -151,7 +151,7 @@ DBI::dbListTables(NBAdb)
 DBI::dbDisconnect(NBAdb)
 
 ## how to query
-df <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "./nba_db_sqlite"), "GameLogsAdj") %>% 
+df <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db"), "GameLogsAdj") %>% 
     collect() %>%
     mutate(date = as_date(date, origin ="1970-01-01"))
 
