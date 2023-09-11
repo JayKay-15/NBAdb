@@ -80,6 +80,13 @@ df2 <- df %>%
 saveRDS(df2, "odds_clean")
 df <- readRDS("odds_full")
 
+df_odds <- box_scores %>%
+    left_join(df, by = c("game_id"="game_id",
+                         "team_home_away"="location",
+                         "team_id"="team_id")) %>%
+    filter(season == 2021) %>%
+    select(game_date,team_name,spread:implied_prob)
+    
 
 
 # cleanR
