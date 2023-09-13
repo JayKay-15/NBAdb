@@ -6,10 +6,10 @@ library(RSQLite)
 library(DBI)
 
 
-options(dplyr.summarise.inform = FALSE)
-Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
-
-rm(list=ls())
+# options(dplyr.summarise.inform = FALSE)
+# Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
+# 
+# rm(list=ls())
 
 
 # Update hoopR db
@@ -25,7 +25,7 @@ hoopR::update_nba_db(
 hoop_db <- DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/hoopR_db")
 DBI::dbListTables(hoop_db)
 
-DBI::dbWriteTable(hoop_db, "nba_odds", df2, append = T)
+DBI::dbWriteTable(hoop_db, "nba_odds", odds_clean, append = T)
 # DBI::dbRemoveTable(hoop_db, "hoop_db")
 
 DBI::dbDisconnect(hoop_db)
@@ -40,8 +40,7 @@ ids <- unique(box_scores$game_id)
 
 odds_df <- data.frame()
 
-for (i in unique(ids)) {
-    
+for (i in ids) {
     odds_list <- espn_nba_betting(i)
     
     odds_picks <- odds_list$pickcenter
@@ -59,143 +58,142 @@ for (i in unique(ids)) {
     
 }
 
-df2 <- df %>%
+odds_full <- readRDS("odds_full")
+
+odds_clean <- odds_full %>%
     filter(provider_name == "teamrankings") %>%
     pivot_longer(cols = c(away_team_odds_team_id, home_team_odds_team_id),
                  names_to = "id_type", values_to = "team_id") %>%
     pivot_longer(cols = c(away_team_odds_money_line, home_team_odds_money_line),
                  names_to = "line_type", values_to = "moneyline") %>%
-    filter((id_type == "away_team_odds_team_id" & line_type == "away_team_odds_money_line") |
-               (id_type == "home_team_odds_team_id" & line_type == "home_team_odds_money_line")) %>%
+    filter((id_type == "away_team_odds_team_id" &
+                line_type == "away_team_odds_money_line") |
+               (id_type == "home_team_odds_team_id" &
+                    line_type == "home_team_odds_money_line")) %>%
     mutate(location = ifelse(grepl("away", id_type), "away", "home"),
            spread = if_else(location == "away", spread*-1, spread),
-           team_id = as.numeric(team_id)) %>%
-    select(game_id, location, team_id, spread, moneyline, over_under)
+           team_id = as.numeric(team_id),
+           implied_prob = if_else(moneyline < 0, -moneyline / (-moneyline + 100),
+                                  100 / (moneyline + 100))) %>%
+    select(game_id, location, team_id, spread, moneyline, over_under, implied_prob)
+
+# saveRDS(odds_clean, "odds_clean")
 
 
-df2 <- df %>%
-    mutate(implied_prob = if_else(moneyline < 0, -moneyline / (-moneyline + 100),
-                                  100 / (moneyline + 100)))
-
-saveRDS(df2, "odds_clean")
-df <- readRDS("odds_full")
-
-df_odds <- box_scores %>%
-    left_join(df, by = c("game_id"="game_id",
-                         "team_home_away"="location",
-                         "team_id"="team_id")) %>%
-    filter(season == 2021) %>%
-    select(game_date,team_name,spread:implied_prob)
-    
-
-
-# cleanR
-
-# Player box scores
-box_scores <- hoopR::load_nba_player_box(seasons = c(2014:2022)) %>%
-    filter(team_id <= 30) %>%
-    arrange(desc(game_id))
-
-schedule <- load_nba_schedule(seasons = 2014:2022)
-
-df <- box_scores %>%
-    filter(!is.na(minutes)) %>%
-    select(game_id, season, season_type, game_date, home_away,
-           team_id, team_display_name, opponent_team_id, opponent_team_display_name,
-           team_winner, points, minutes,
-           field_goals_made, field_goals_attempted,
-           three_point_field_goals_made, three_point_field_goals_attempted,
-           free_throws_made, free_throws_attempted,
-           offensive_rebounds, defensive_rebounds, rebounds,
-           assists, turnovers, steals, blocks, fouls) %>%
-    group_by(game_id, season, season_type, game_date, home_away,
-             team_id, team_display_name, opponent_team_id, opponent_team_display_name,
-             team_winner) %>%
-    summarise(across(minutes:fouls, \(x) sum(x, na.rm = TRUE))) %>%
-    ungroup() %>%
-    left_join(schedule %>% select(id, status_period),
-              by = c("game_id" = "id")) %>%
-    mutate(minutes = if_else(status_period > 4,
-                             ((status_period - 4)*5*5)+240,
-                             240)) %>%
-    select(-status_period)
+# # cleanR
+# # Player box scores
+# box_scores <- hoopR::load_nba_player_box(seasons = c(2014:2022)) %>%
+#     filter(team_id <= 30) %>%
+#     arrange(desc(game_id))
+# 
+# schedule <- load_nba_schedule(seasons = 2014:2022)
+# 
+# df <- box_scores %>%
+#     filter(!is.na(minutes)) %>%
+#     select(game_id, season, season_type, game_date, home_away,
+#            team_id, team_display_name, opponent_team_id, opponent_team_display_name,
+#            team_winner, points, minutes,
+#            field_goals_made, field_goals_attempted,
+#            three_point_field_goals_made, three_point_field_goals_attempted,
+#            free_throws_made, free_throws_attempted,
+#            offensive_rebounds, defensive_rebounds, rebounds,
+#            assists, turnovers, steals, blocks, fouls) %>%
+#     group_by(game_id, season, season_type, game_date, home_away,
+#              team_id, team_display_name, opponent_team_id, opponent_team_display_name,
+#              team_winner) %>%
+#     summarise(across(minutes:fouls, \(x) sum(x, na.rm = TRUE))) %>%
+#     ungroup() %>%
+#     left_join(schedule %>% select(id, status_period),
+#               by = c("game_id" = "id")) %>%
+#     mutate(minutes = if_else(status_period > 4,
+#                              ((status_period - 4)*5*5)+240,
+#                              240)) %>%
+#     select(-status_period)
 
 
 
-# Team box scores
+
+
+# cleanR - team box scores
+
+# load box scores
 box_scores <- hoopR::load_nba_team_box(seasons = c(2014:2022)) %>%
-    filter(team_id <= 30) %>%
+    filter(team_id <= 30 & season_type == 2) %>%
     arrange(desc(game_id))
 
-schedule <- load_nba_schedule(seasons = 2014:2022)
+# load schedule
+nba_schedule <- load_nba_schedule(seasons = 2014:2022)
 
+# create box score data frame
 df_team <- box_scores %>%
-    mutate(fast_break_points = as.numeric(fast_break_points),
-           points_in_paint = as.numeric(points_in_paint),
-           turnover_points = as.numeric(turnover_points),
-           fg2m = field_goals_made - three_point_field_goals_made,
-           fg2a = field_goals_attempted - three_point_field_goals_attempted) %>%
-    select(game_id, season, season_type, game_date, team_home_away,
-           team_id, team_display_name, opponent_team_id, opponent_team_display_name,
-           team_winner, team_score, opponent_team_score,
-           fg2m, fg2a,
-           three_point_field_goals_made, three_point_field_goals_attempted,
-           field_goals_made, field_goals_attempted,
-           free_throws_made, free_throws_attempted,
-           offensive_rebounds, defensive_rebounds, total_rebounds,
-           assists, turnovers, steals, blocks, fouls,
-           fast_break_points, points_in_paint, turnover_points) %>%
-    left_join(schedule %>% select(id, status_period),
-              by = c("game_id" = "id")) %>%
-    mutate(mins = if_else(status_period > 4,
-                             ((status_period - 4)*5*5)+240,
-                             240)) %>%
-    select(-status_period) %>%
-    rename(team_loc = team_home_away,
-           team_name = team_display_name,
-           opp_id = opponent_team_id,
-           opp_name = opponent_team_display_name,
-           opp_score = opponent_team_score,
-           fg3m = three_point_field_goals_made,
-           fg3a = three_point_field_goals_attempted,
-           fgm = field_goals_made,
-           fga = field_goals_attempted,
-           ftm = free_throws_made,
-           fta = free_throws_attempted,
-           oreb = offensive_rebounds,
-           dreb = defensive_rebounds,
-           treb = total_rebounds,
-           ast = assists,
-           tov = turnovers,
-           stl = steals,
-           blk = blocks,
-           pf = fouls,
-           fb_pts = fast_break_points,
-           pip = points_in_paint,
-           tov_pts = turnover_points)
+    left_join(nba_schedule %>% select(id, status_period),
+              by = c("game_id" = "id")
+    ) %>%
+    mutate(
+        fast_break_points = as.numeric(fast_break_points),
+        points_in_paint = as.numeric(points_in_paint),
+        turnover_points = as.numeric(turnover_points),
+        mins = if_else(status_period > 4, ((status_period - 4)*5*5)+240, 240),
+        fg2m = field_goals_made - three_point_field_goals_made,
+        fg2a = field_goals_attempted - three_point_field_goals_attempted
+    ) %>%
+    rename(
+        team_name_short = team_name,
+        team_loc = team_home_away,
+        team_name = team_display_name,
+        opp_id = opponent_team_id,
+        opp_name = opponent_team_display_name,
+        opp_score = opponent_team_score,
+        fg3m = three_point_field_goals_made,
+        fg3a = three_point_field_goals_attempted,
+        fgm = field_goals_made,
+        fga = field_goals_attempted,
+        ftm = free_throws_made,
+        fta = free_throws_attempted,
+        oreb = offensive_rebounds,
+        dreb = defensive_rebounds,
+        treb = total_rebounds,
+        ast = assists,
+        tov = turnovers,
+        stl = steals,
+        blk = blocks,
+        pf = fouls,
+        fb_pts = fast_break_points,
+        pip = points_in_paint,
+        tov_pts = turnover_points
+    ) %>%
+    select(
+        game_id, season, season_type, game_date, team_loc, team_id, team_name,
+        opp_id, opp_name, team_winner, team_score, opp_score, mins,
+        fg2m, fg2a, fg3m, fg3a, fgm, fga, ftm, fta,
+        oreb, dreb, treb, ast, tov, stl, blk, pf, fb_pts, pip, tov_pts
+    )
 
+# create opponent data frame
 df_opp <- df_team %>%
-    select(game_id, team_id,
-           fg2m, fg2a, fg3m, fg3a, fgm, fga, ftm, fta, oreb, dreb, treb, ast, tov, stl,
-           blk, pf, fb_pts, pip, tov_pts, mins) %>%
+    select(game_id, team_id, fg2m, fg2a, fg3m, fg3a, fgm, fga, ftm, fta,
+           oreb, dreb, treb, ast, tov, stl, blk, pf, fb_pts, pip, tov_pts) %>%
     rename_with(~paste0("opp_", .), -c(game_id, team_id))
 
+# join team and opponent data frames
 df_full <- df_team %>%
     left_join(df_opp, by = c("game_id" = "game_id", "opp_id" = "team_id"))
 
+# aggregate stats
 df_agg <- df_full %>%
     arrange(game_date, game_id) %>%
-    filter(season == 2022 & season_type == 2) %>%
-    group_by(team_id, team_loc) %>%
-    mutate(across(fg2m:opp_mins, \(x) pracma::movavg(x, n = 10, type = 'e')))
+    group_by(season, team_id, team_loc) %>%
+    mutate(across(fg2m:opp_tov_pts, \(x) pracma::movavg(x, n = 10, type = 'e')))
 
+# calculate advanced stats
 df_adv <- df_agg %>%
     mutate(
-        poss = round(fga - oreb + tov + (0.44 * fta),0),
-        opp_poss = round(opp_fga - opp_oreb + opp_tov + (0.44 * opp_fta),0),
-        pace = round((poss + opp_poss) * 48 / ((mins/5) * 2),0),
-        off_rtg = round((team_score/poss) * 100, 1),
-        def_rtg = round((opp_score/opp_poss) * 100, 1),
+        poss = round(fga - oreb + tov + (0.44*fta), 0),
+        opp_poss = round(opp_fga - opp_oreb + opp_tov + (0.44*opp_fta), 0),
+        pace = round((poss + opp_poss)*48 / ((mins/5)*2), 0),
+        off_rtg = round((team_score/poss)*100, 1),
+        def_rtg = round((opp_score/opp_poss)*100, 1),
+        net_rtg = off_rtg - def_rtg,
         fg2_pct = fg2m/fg2a,
         fg2_sr = (fga-fg2a)/fga,
         fg3_pct = fg3m/fg3a,
@@ -230,21 +228,141 @@ df_adv <- df_agg %>%
         opp_ast_tov_pct = opp_ast/opp_tov,
         opp_stl_pct = opp_stl/poss,
         opp_blk_pct = opp_blk/(fga-fg3a)
-        ) %>%
-    select(game_id:opp_score,fg2m,fg2a,fg2_pct,fg2_sr,fg3m,fg3a,fg3_pct,fg3_sr,
-           fgm,fga,fg_pct,efg_pct,ts_pct,ftm,fta,ft_pct,ftr,oreb,oreb_pct,
-           dreb,dreb_pct,treb,treb_pct,ast,ast_pct,tov,tov_pct,ast_tov_pct,tov_pts,
-           stl,stl_pct,blk,blk_pct,poss,opp_poss,pace,off_rtg,def_rtg,
-           opp_fg2m,opp_fg2a,opp_fg2_pct,opp_fg2_sr,opp_fg3m,opp_fg3a,
-           opp_fg3_pct,opp_fg3_sr,opp_fgm,opp_fga,opp_fg_pct,opp_efg_pct,
-           opp_ts_pct,opp_ftm,opp_fta,opp_ft_pct,opp_ftr,opp_oreb,opp_oreb_pct,
-           opp_dreb,opp_dreb_pct,opp_treb,opp_treb_pct,opp_ast,opp_ast_pct,
-           opp_tov,opp_tov_pct,opp_ast_tov_pct,opp_tov_pts,opp_stl,opp_stl_pct,
-           opp_blk,opp_blk_pct)
+    ) %>%
+    select(
+        game_id:mins,fg2m,fg2a,fg2_pct,fg2_sr,fg3m,fg3a,fg3_pct,fg3_sr,
+        fgm,fga,fg_pct,efg_pct,ts_pct,ftm,fta,ft_pct,ftr,oreb,oreb_pct,
+        dreb,dreb_pct,treb,treb_pct,ast,ast_pct,tov,tov_pct,ast_tov_pct,tov_pts,
+        stl,stl_pct,blk,blk_pct,
+        opp_fg2m,opp_fg2a,opp_fg2_pct,opp_fg2_sr,opp_fg3m,opp_fg3a,
+        opp_fg3_pct,opp_fg3_sr,opp_fgm,opp_fga,opp_fg_pct,opp_efg_pct,
+        opp_ts_pct,opp_ftm,opp_fta,opp_ft_pct,opp_ftr,opp_oreb,opp_oreb_pct,
+        opp_dreb,opp_dreb_pct,opp_treb,opp_treb_pct,opp_ast,opp_ast_pct,
+        opp_tov,opp_tov_pct,opp_ast_tov_pct,opp_tov_pts,opp_stl,opp_stl_pct,
+        opp_blk,opp_blk_pct,
+        poss,opp_poss,pace,off_rtg,def_rtg,net_rtg
+    )
+
+# attach betting odds
+odds_clean <- readRDS("odds_clean")
+df_final <- df_adv %>%
+    left_join(odds_clean, by = c("game_id"="game_id",
+                                 "team_loc"="location",
+                                 "team_id"="team_id"))
+
+league_avg <- df_team %>%
+    arrange(game_date, game_id) %>%
+    group_by(season, team_loc) %>%
+    summarize(across(team_score:tov_pts, \(x) mean(x)))
+
+
+rm(list=ls()[! ls() %in% c("df_final", "league_avg")])
+
+
+
+df_clean_lag <- df_final %>%
+    group_by(season, team_id, team_loc) %>%
+    mutate(across(fg2m:opp_tov_pts, \(x) lag(x, n = 1))) %>%
+    ungroup() %>%
+    na.exclude() %>%
+    select(-ast_tov_pct, -opp_ast_tov_pct, -spread, -moneyline, -over_under)
     
-    
-# test if group by is working properly... filter home/away and run movavg
-    
+
+
+
+
+
+set.seed(214)
+train <- df_clean_lag %>%
+    ungroup() %>%
+    filter(season %in% 2014:2021) %>%
+    select(10, 14:84) %>%
+    mutate(team_winner = as.factor(if_else(team_winner == TRUE, "W", "L")))
+
+test <- df_clean_lag %>%
+    ungroup() %>%
+    filter(season == 2022) %>%
+    select(10, 14:84) %>%
+    mutate(team_winner = as.factor(if_else(team_winner == TRUE, "W", "L")))
+
+pre_proc_val <- preProcess(train[,-1], method = c("center", "scale"))
+
+train[,-1] = predict(pre_proc_val, train[,-1])
+test[,-1] = predict(pre_proc_val, test[,-1])
+# summary(train)
+
+# Model
+ctrl <- trainControl(method = "cv", number = 2, verboseIter = T, 
+                     classProbs = T, summaryFunction = twoClassSummary)
+
+grid <- expand.grid(
+    sigma = c(0.005, 0.01, 0.05),
+    C = c(0.25, 0.5, 0.75)
+)
+
+svm_win <- train(as.factor(team_winner) ~., data = train,
+                 method = "svmRadial",
+                 metric = "ROC",
+                 trControl = ctrl,
+                 tuneGrid = grid)
+
+svm_win
+svm_win$resample
+svm_win$results
+summary(svm_win)
+plot(svm_win)
+confusionMatrix(svm_win)
+
+# saveRDS(svm_win, "svm_win_model.rds")
+
+win_pred <- predict(svm_win, test, type = "prob")
+confusionMatrix(as.factor(test$result), as.factor(ifelse(win_pred[,2] > 0.5, "W", "L")),
+                positive = "W")
+
+L <- as.numeric(win_pred[,1])
+W <- as.numeric(win_pred[,2])
+obs <- factor(test$result)
+pred <- factor(ifelse(W > 0.5, "W", "L"))
+obs_pred <- data.frame(obs = obs,
+                       pred = pred,
+                       L = L, 
+                       W = W,
+                       act = ifelse(obs == "W", 1, 0))
+
+twoClassSummary(obs_pred, lev = levels(obs)) # ROC
+prSummary(obs_pred, lev = levels(obs)) # AUC
+
+InformationValue::plotROC(obs_pred$act, obs_pred$W, returnSensitivityMat = T)
+
+obs_pred %>%
+    metrics(obs, pred)
+obs_pred %>%
+    roc_auc(obs, L)
+
+svm_win_imp <- rownames_to_column(varImp(svm_win)[["importance"]], "Var") %>%
+    arrange(desc(Overall)) %>%
+    head()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+df <- readRDS(file = "/Users/jesse/Desktop/Test_result.rds")
+
+
+df2 <- df %>%
+    mutate(h_edge = (H_prob/100) - Prob_ho,
+           a_edge = (A_prob/100) - Prob_aw,
+           bet = if_else(h_edge > 0, ))
     
     
     
