@@ -117,7 +117,17 @@ teams <- nbastatR::nba_teams(league = "NBA")
 ## BREF team stats - ADD TO DATABASE *********
 nbastatR::bref_teams_stats(seasons = 2023)
 
-## connect to SQL database--------------------------------------------------------
+## 2023-2024 new database ------------------------------------------------------
+# see nba_db_refresh
+
+# DBI::dbWriteTable(NBAdb, "game_logs_adj", nba_final, overwrite = T)
+# DBI::dbWriteTable(NBAdb, "box_scores_gbg", box_scores_gbg, overwrite = T)
+# DBI::dbWriteTable(NBAdb, "nba_league_avg", nba_league_avg, overwrite = T)
+
+
+
+
+## connect to SQL database------------------------------------------------------
 
 NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db")
 # NBAdb
@@ -139,7 +149,7 @@ DBI::dbListTables(NBAdb)
 # DBI::dbWriteTable(NBAdb, "BasicBoxScoreBREF", master_fic)                           # Box_Scores_BREF - error in scrape
 # DBI::dbWriteTable(NBAdb, "AdvancedBoxScoreBREF", master_vorp)                       # Box_Scores_BREF - error in scrape
 # DBI::dbWriteTable(NBAdb, "GamesBREF", game_df, append = T)                          # Box_Scores_BREF - error in scrape
-# DBI::dbWriteTable(NBAdb, "GameLogsAdj", final_db)                                   # dbRefresh --- 7/15
+# DBI::dbWriteTable(NBAdb, "GameLogsAdj", final_db)                                   # dbRefresh --- rework 9/30
 # DBI::dbWriteTable(NBAdb, "ResultsBook", df)                                         # model ---
 # DBI::dbWriteTable(NBAdb, "Plays", df)                                               # model ---
 # DBI::dbWriteTable(NBAdb, "Odds", df)                                                # model ---
@@ -151,7 +161,8 @@ DBI::dbListTables(NBAdb)
 DBI::dbDisconnect(NBAdb)
 
 ## how to query
-df <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db"), "GameLogsAdj") %>% 
+df <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db"),
+                 "GameLogsAdj") %>%
     collect() %>%
     mutate(date = as_date(date, origin ="1970-01-01"))
 
