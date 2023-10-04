@@ -135,7 +135,74 @@ nba_league_avg <- box_scores_gbg %>%
         opp_pf_pct = opp_pf/(poss+opp_poss)
     ) %>%
     select(
-        season,team_loc,fg2m,fg2a,fg2_pct,fg2_sr,fg3m,fg3a,fg3_pct,fg3_sr,
+        season,team_loc,team_score,opp_score,
+        fg2m,fg2a,fg2_pct,fg2_sr,fg3m,fg3a,fg3_pct,fg3_sr,
+        fgm,fga,fg_pct,efg_pct,ts_pct,ftm,fta,ft_pct,ftr,oreb,oreb_pct,
+        dreb,dreb_pct,treb,treb_pct,ast,ast_pct,tov,tov_pct,ast_tov_pct,
+        stl,stl_pct,blk,blk_pct,pf,pf_pct,
+        opp_fg2m,opp_fg2a,opp_fg2_pct,opp_fg2_sr,opp_fg3m,opp_fg3a,
+        opp_fg3_pct,opp_fg3_sr,opp_fgm,opp_fga,opp_fg_pct,opp_efg_pct,
+        opp_ts_pct,opp_ftm,opp_fta,opp_ft_pct,opp_ftr,opp_oreb,opp_oreb_pct,
+        opp_dreb,opp_dreb_pct,opp_treb,opp_treb_pct,opp_ast,opp_ast_pct,
+        opp_tov,opp_tov_pct,opp_ast_tov_pct,opp_stl,opp_stl_pct,
+        opp_blk,opp_blk_pct,opp_pf,opp_pf_pct,
+        poss,opp_poss,pace,off_rtg,def_rtg,net_rtg
+    )
+
+# straight average
+nba_team_avg <- box_scores_gbg %>%
+    arrange(game_date, game_id) %>%
+    group_by(season, team_id, team_name, team_loc) %>%
+    summarize(across(c(mins:opp_score, fg2m:opp_pf),
+                     \(x) mean(x))) %>%
+    ungroup() %>%
+    mutate(
+        poss = round(fga - oreb + tov + (0.44*fta), 0),
+        opp_poss = round(opp_fga - opp_oreb + opp_tov + (0.44*opp_fta), 0),
+        pace = round((poss + opp_poss)*48 / ((mins/5)*2), 0),
+        off_rtg = round((team_score/poss)*100, 1),
+        def_rtg = round((opp_score/opp_poss)*100, 1),
+        net_rtg = off_rtg - def_rtg,
+        fg2_pct = fg2m/fg2a,
+        fg2_sr = (fga-fg2a)/fga,
+        fg3_pct = fg3m/fg3a,
+        fg3_sr = (fga-fg3a)/fga,
+        fg_pct = fgm/fga,
+        efg_pct = (fg3m*0.5 + fgm)/fga,
+        ts_pct = team_score/(fga*2 + fta*0.44),
+        ft_pct = ftm/fta,
+        ftr = ftm/fga,
+        oreb_pct = oreb/(oreb+opp_dreb),
+        dreb_pct = dreb/(dreb+opp_oreb),
+        treb_pct = treb/(treb+opp_treb),
+        ast_pct = ast/fgm,
+        tov_pct = tov/poss,
+        ast_tov_pct = ast/tov,
+        stl_pct = stl/opp_poss,
+        blk_pct = blk/(opp_fga-opp_fg3a),
+        pf_pct = pf/(poss+opp_poss),
+        opp_fg2_pct = opp_fg2m/opp_fg2a,
+        opp_fg2_sr = (opp_fga-opp_fg2a)/opp_fga,
+        opp_fg3_pct = opp_fg3m/opp_fg3a,
+        opp_fg3_sr = (opp_fga-opp_fg3a)/opp_fga,
+        opp_fg_pct = opp_fgm/opp_fga,
+        opp_efg_pct = (opp_fg3m*0.5 + opp_fgm)/opp_fga,
+        opp_ts_pct = opp_score/(opp_fga*2 + opp_fta*0.44),
+        opp_ft_pct = opp_ftm/opp_fta,
+        opp_ftr = opp_ftm/opp_fga,
+        opp_oreb_pct = opp_oreb/(opp_oreb+dreb),
+        opp_dreb_pct = opp_dreb/(opp_dreb+oreb),
+        opp_treb_pct = opp_treb/(treb+opp_treb),
+        opp_ast_pct = opp_ast/opp_fgm,
+        opp_tov_pct = opp_tov/opp_poss,
+        opp_ast_tov_pct = opp_ast/opp_tov,
+        opp_stl_pct = opp_stl/poss,
+        opp_blk_pct = opp_blk/(fga-fg3a),
+        opp_pf_pct = opp_pf/(poss+opp_poss),
+    ) %>%
+    select(
+        season,team_id,team_name,team_loc,team_score,opp_score,
+        fg2m,fg2a,fg2_pct,fg2_sr,fg3m,fg3a,fg3_pct,fg3_sr,
         fgm,fga,fg_pct,efg_pct,ts_pct,ftm,fta,ft_pct,ftr,oreb,oreb_pct,
         dreb,dreb_pct,treb,treb_pct,ast,ast_pct,tov,tov_pct,ast_tov_pct,
         stl,stl_pct,blk,blk_pct,pf,pf_pct,
@@ -297,14 +364,18 @@ nba_lag_home <- nba_wt_avg %>%
 
 # final data frame
 nba_final <- nba_base %>%
-    left_join(nba_lag_away, by = c("game_id" = "game_id", "team_id" = "team_id")) %>%
-    left_join(nba_lag_home, by = c("game_id" = "game_id", "opp_id" = "team_id")) %>%
+    left_join(nba_lag_away, by = c("game_id" = "game_id",
+                                   "team_id" = "team_id")) %>%
+    left_join(nba_lag_home, by = c("game_id" = "game_id",
+                                   "opp_id" = "team_id")) %>%
     na.exclude() %>%
-    select(-c(game_count:opp_score)) %>%
+    select(-c(game_count:mins)) %>%
     arrange(game_date, game_id)
 
 # clear environment
-rm(list=ls()[! ls() %in% c("box_scores_gbg", "nba_league_avg", "nba_final")])
+rm(list=ls()[! ls() %in% c("box_scores_gbg", "nba_final",
+                           "nba_league_avg", "nba_team_avg")])
+
 
 
 
@@ -316,6 +387,7 @@ NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db")
 DBI::dbWriteTable(NBAdb, "game_logs_adj", nba_final, overwrite = T)
 DBI::dbWriteTable(NBAdb, "box_scores_gbg", box_scores_gbg, overwrite = T)
 DBI::dbWriteTable(NBAdb, "nba_league_avg", nba_league_avg, overwrite = T)
+DBI::dbWriteTable(NBAdb, "nba_team_avg", nba_team_avg, overwrite = T)
 
 DBI::dbDisconnect(NBAdb)
 
