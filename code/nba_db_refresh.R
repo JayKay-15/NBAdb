@@ -12,7 +12,7 @@ Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
 game_logs(seasons = c(2014:2023), result_types = c("team","players"))
 
 # dataGameLogsTeam <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"),
-#                         "game_logs_adj") %>%
+#                         "GameLogsTeam") %>%
 #     collect() %>%
 #     filter(yearSeason %in% c(2014:2023)) %>%
 #     mutate(dateGame = as_date(dateGame, origin ="1970-01-01"))
