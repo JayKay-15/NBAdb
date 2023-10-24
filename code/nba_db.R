@@ -1,7 +1,6 @@
 ######## DATABASE ######## --------------------------------------------------
 
 library(tidyverse)
-library(lubridate)
 library(nbastatR)
 library(RSQLite)
 library(DBI)
@@ -13,7 +12,7 @@ Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
 
 # TeamShots missing: 21201214_1610612754 & 21201214_1610612738
 
-team_logs <- game_logs(seasons = 2023, result_types = "team")
+team_logs <- game_logs(seasons = c(2023), result_types = "team")
 
 games <- team_logs %>%
     mutate(slugTeamHome = ifelse(locationGame == "H", slugTeam, slugOpponent),
@@ -57,7 +56,7 @@ dataBREFPlayerPerGame_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"../nba_
     filter(isSeasonCurrent == FALSE) %>% 
     mutate(isSeasonCurrent = FALSE)
 
-bref_players_stats(seasons = c(2023), tables = c("advanced", "totals", "per game"))
+bref_players_stats(seasons = c(2024), tables = c("advanced", "totals", "per game"))
 
 dataBREFPlayerAdvanced <- dataBREFPlayerAdvanced %>% bind_rows(dataBREFPlayerAdvanced_db) %>% arrange(yearSeason,slugPlayerBREF)
 dataBREFPlayerTotals <- dataBREFPlayerTotals %>% bind_rows(dataBREFPlayerTotals_db) %>% arrange(yearSeason,slugPlayerBREF)
@@ -89,12 +88,11 @@ play_logs_all <- play_logs_all_new %>% filter(!idGame %in% PlayByPlay_db$idGame)
 ## box scores
 BoxScorePlayer_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"../nba_sql_db/nba_db"),"BoxScorePlayer") %>%
     collect()
+games_bs <- games %>% filter(!idGame %in% BoxScorePlayer_db$idGame)
 
 BoxScoreTeam_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"../nba_sql_db/nba_db"),"BoxScoreTeam") %>%
     collect()
-
-games_bs <- games %>% filter(!idGame %in% BoxScorePlayer_db$idGame)
-# games_bs2 <- games %>% filter(!idGame %in% BoxScoreTeam_db$idGame)
+games_bs <- games %>% filter(!idGame %in% BoxScoreTeam_db$idGame)
 
 box_scores(
     game_ids = unique(games_bs$idGame),
@@ -114,8 +112,34 @@ dataBoxScoreTeamNBA <- dataBoxScoreTeamNBA %>% filter(!idGame %in% BoxScoreTeam_
 teams <- nbastatR::nba_teams(league = "NBA")
 
 
-## BREF team stats - ADD TO DATABASE *********
-nbastatR::bref_teams_stats(seasons = 2023)
+# TeamPerGame & TeamPerPoss & TeamShootiing & TeamTotals
+dataBREFPerGameTeams_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db"),"TeamPerGame") %>%
+    collect() %>%
+    filter(isSeasonCurrent == FALSE) %>% 
+    mutate(isSeasonCurrent = FALSE)
+
+dataBREFPerPossTeams_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"../nba_sql_db/nba_db"),"TeamPerPoss") %>%
+    collect() %>%
+    filter(isSeasonCurrent == FALSE) %>% 
+    mutate(isSeasonCurrent = FALSE)
+
+dataBREFShootingTeams_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"../nba_sql_db/nba_db"),"TeamShooting") %>%
+    collect() %>%
+    filter(isSeasonCurrent == FALSE) %>% 
+    mutate(isSeasonCurrent = FALSE)
+
+dataBREFTotalsTeams_db <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(),"../nba_sql_db/nba_db"),"TeamTotals") %>%
+    collect() %>%
+    filter(isSeasonCurrent == FALSE) %>% 
+    mutate(isSeasonCurrent = FALSE)
+
+bref_teams_stats(seasons = c(2023))
+
+dataBREFPerGameTeams <- dataBREFPerGameTeams %>% bind_rows(dataBREFPerGameTeams_db)
+dataBREFPerPossTeams <- dataBREFPerPossTeams %>% bind_rows(dataBREFPerPossTeams_db)
+dataBREFShootingTeams <- dataBREFShootingTeams %>% bind_rows(dataBREFShootingTeams_db)
+dataBREFTotalsTeams <- dataBREFTotalsTeams %>% bind_rows(dataBREFTotalsTeams_db)
+
 
 ## 2023-2024 new database ------------------------------------------------------
 # see nba_db_refresh
@@ -146,9 +170,9 @@ DBI::dbListTables(NBAdb)
 # DBI::dbWriteTable(NBAdb, "BoxScorePlayer", dataBoxScorePlayerNBA, append = T)       # automated --- slow scrape
 # DBI::dbWriteTable(NBAdb, "BoxScoreTeam", dataBoxScoreTeamNBA, append = T)           # automated --- slow scrape
 # DBI::dbWriteTable(NBAdb, "TeamDictionary", team_dict, overwrite = T)                # as needed ---
-# DBI::dbWriteTable(NBAdb, "BasicBoxScoreBREF", master_fic)                           # Box_Scores_BREF - error in scrape
-# DBI::dbWriteTable(NBAdb, "AdvancedBoxScoreBREF", master_vorp)                       # Box_Scores_BREF - error in scrape
-# DBI::dbWriteTable(NBAdb, "GamesBREF", game_df, append = T)                          # Box_Scores_BREF - error in scrape
+# DBI::dbWriteTable(NBAdb, "BasicBoxScoreBREF", master_fic)                           # Box_Scores_BREF --- limited
+# DBI::dbWriteTable(NBAdb, "AdvancedBoxScoreBREF", master_vorp)                       # Box_Scores_BREF --- limited
+# DBI::dbWriteTable(NBAdb, "GamesBREF", game_df, append = T)                          # Box_Scores_BREF --- 7/15
 # DBI::dbWriteTable(NBAdb, "GameLogsAdj", final_db)                                   # dbRefresh --- rework 9/30
 # DBI::dbWriteTable(NBAdb, "ResultsBook", df)                                         # model ---
 # DBI::dbWriteTable(NBAdb, "Plays", df)                                               # model ---
@@ -162,9 +186,9 @@ DBI::dbDisconnect(NBAdb)
 
 ## how to query
 df <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db"),
-                 "GameLogsAdj") %>%
+                 "GameLogsTeam") %>%
     collect() %>%
-    mutate(date = as_date(date, origin ="1970-01-01"))
+    mutate(date_game = as_date(date_game, origin ="1970-01-01"))
 
 
 ## checking for missing games
