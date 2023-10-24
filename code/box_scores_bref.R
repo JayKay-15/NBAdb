@@ -1,16 +1,15 @@
 ###### to get game ids ------------------------------------------
 library(tidyverse)
-library(lubridate)
 library(rvest)
 
 ########
 # PARAMETERS
 ########
-year <- "2023"
+year <- "2024"
 monthList <- c("october", "november", "december", "january", "february",
                "march", "april")
-playoff_startDate <- ymd("2023-04-10")
-outputfile <- "NBA_2023_game_data.rds"
+playoff_startDate <- ymd("2024-04-14")
+# outputfile <- "NBA_2023_game_data.rds"
 
 # year <- "2021"
 # monthList <- c("december", "january", "february",
@@ -95,7 +94,7 @@ df$game_type <- with(df, ifelse(date_game >= playoff_startDate,
 df$box_score_text <- NULL
 
 # save to file
-saveRDS(df, outputfile)
+saveRDS(df, "./box_scores/NBA_2024_game_data.rds")
 
 ## Box Scores ----------------------------------------------------
 
@@ -264,9 +263,7 @@ saveRDS(master_df, "./box_scores/NBA_2023_basic_box_scores.rds")
 
 
 
-
-####### Adding FIC & VORP -----------------------------------------------
-
+#### Adding FIC & VORP ----
 
 # VORP - Value Over Replacement Player (available since the 1973-74 season in the NBA); 
 # a box score estimate of the points per 100 TEAM possessions that a player contributed above a replacement-level (-2.0) player, 
@@ -277,9 +274,7 @@ df_basic <- as_tibble(readRDS("./box_scores/2023_NBA_basic_box_scores.rds"))
 df_adv <- as_tibble(readRDS("./box_scores/2023_NBA_advanced_box_scores.rds"))
 
 
-
 # calculate fic
-
 fic <- df_adv
 
 fic$MP <- hms::as_hms(strptime(fic$MP, "%M:%S"))
@@ -290,10 +285,7 @@ master_fic <- fic %>%
     mutate(FIC40 = round(ifelse(!FIC, NA, (FIC/MP)*40),1))
 
 
-
-
 # calculate vorp
-
 vorp <- df_adv
 
 vorp$MP <- hms::as_hms(strptime(vorp$MP, "%M:%S"))
