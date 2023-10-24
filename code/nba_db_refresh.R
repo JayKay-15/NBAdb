@@ -1,6 +1,5 @@
 ### DB Refresh ------------------------------
 library(tidyverse)
-library(lubridate)
 library(nbastatR)
 library(RSQLite)
 library(DBI)
