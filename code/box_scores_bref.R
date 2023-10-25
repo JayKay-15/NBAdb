@@ -173,6 +173,86 @@ saveRDS(master_df, "./box_scores/NBA_2023_advanced_box_scores.rds")
 
 
 
+
+
+#### timed loop ----
+
+# Create an empty data frame to store the results
+master_df <- data.frame()
+
+# Your game IDs data frame (game_df)
+game_ids <- game_df$game_id
+
+# Number of games to scrape at a time
+games_per_batch <- 20
+
+# Initialize a counter
+game_counter <- 0
+
+# Loop through the game IDs
+for (current_id in game_ids) {
+    # Check if we've reached the desired batch size
+    if (game_counter >= games_per_batch) {
+        # Pause for 2 minutes
+        Sys.sleep(90)  # 120 seconds = 2 minutes
+        # Reset the counter
+        game_counter <- 0
+    }
+    
+    # Increment the counter
+    game_counter <- game_counter + 1
+    
+    print(current_id)
+    
+    ##########
+    # get box scores
+    ##########
+    url <- paste0("https://www.basketball-reference.com/boxscores/", current_id,
+                  ".html")
+    webpage <- read_html(url)
+    tables <- webpage %>% html_nodes("table") %>%
+        html_table()
+    tables <- discard(tables, function(z) ncol(z) != 17)
+    names(tables) <- c("visitor_adv_boxscore","home_adv_boxscore")
+    
+    a_box <- tables[[1]]
+    names(a_box) <- as.character(a_box[1,])
+    a_box <- a_box[-1,]
+    a_box <- a_box %>%
+        filter(Starters != 'Reserves' & Starters != 'Team Totals') %>%
+        mutate(across(c(MP:BPM), na_if, "Did Not Play")) %>%
+        mutate(game_id = current_id)  %>%
+        mutate(loc = "A") %>%
+        left_join(game_df[c(1,2,4)], by = "game_id") %>%
+        rename("team" = "visitor_team_name") %>%
+        rename("player" = "Starters")
+    a_box[a_box == ""] <- "0"
+    
+    h_box <- tables[[2]]
+    names(h_box) <- as.character(h_box[1,])
+    h_box <- h_box[-1,]
+    h_box <- h_box %>%
+        filter(Starters != 'Reserves' & Starters != 'Team Totals') %>%
+        mutate(across(c(MP:BPM), na_if, "Did Not Play")) %>%
+        mutate(game_id = current_id) %>%
+        mutate(loc = "H") %>%
+        left_join(game_df[c(1,2,6)], by = "game_id") %>%
+        rename("team" = "home_team_name") %>%
+        rename("player" = "Starters")
+    h_box[h_box == ""] <- "0"
+    
+    full_box <- rbind(a_box, h_box)
+    full_box <- full_box %>%
+        select(18,20,19,21,1,2:17)
+    
+    full_box[, 7:ncol(full_box)] <- lapply(7:ncol(full_box), function(x) as.numeric(full_box[[x]]))
+    
+    master_df <- rbind(master_df,full_box)
+}
+
+saveRDS(master_df, "./box_scores/NBA_2023_advanced_box_scores.rds")
+
+
 ##############################
 # SCRIPT STARTS HERE - Basic
 ##############################
