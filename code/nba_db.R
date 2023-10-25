@@ -1,6 +1,7 @@
 ######## DATABASE ######## --------------------------------------------------
 
 library(tidyverse)
+library(janitor)
 library(nbastatR)
 library(RSQLite)
 library(DBI)
@@ -148,7 +149,29 @@ dataBREFTotalsTeams <- dataBREFTotalsTeams %>% bind_rows(dataBREFTotalsTeams_db)
 # DBI::dbWriteTable(NBAdb, "box_scores_gbg", box_scores_gbg, overwrite = T)
 # DBI::dbWriteTable(NBAdb, "nba_league_avg", nba_league_avg, overwrite = T)
 
+saveRDS(team_list, "all_data_list_team.RDS")
+saveRDS(player_list, "all_data_list_player.RDS")
 
+team_list <- read_rds("./all_data_list_team.RDS")
+player_list <- read_rds("./all_data_list_player.RDS")
+
+team_base <- as.data.frame(team_list["Base"]) %>% clean_names()
+team_advanced <- as.data.frame(team_list["Advanced"]) %>% clean_names()
+team_four_factors <- as.data.frame(team_list["Four Factors"]) %>% clean_names()
+team_misc <- as.data.frame(team_list["Misc"]) %>% clean_names()
+team_scoring <- as.data.frame(team_list["Scoring"]) %>% clean_names()
+
+box_scores_team <- bind_cols(team_base,team_advanced,team_four_factors,
+                                 team_misc,team_scoring)
+
+player_base <- as.data.frame(player_list["Base"]) %>% clean_names()
+player_advanced <- as.data.frame(player_list["Advanced"]) %>% clean_names()
+player_usage <- as.data.frame(player_list["Usage"]) %>% clean_names()
+player_misc <- as.data.frame(player_list["Misc"]) %>% clean_names()
+player_scoring <- as.data.frame(player_list["Scoring"]) %>% clean_names()
+
+box_scores_player <- bind_cols(player_base,player_advanced,player_usage,
+                                   player_misc,player_scoring)
 
 
 ## connect to SQL database------------------------------------------------------
@@ -167,13 +190,18 @@ DBI::dbListTables(NBAdb)
 # DBI::dbWriteTable(NBAdb, "TeamShots", TeamShots, append = T)                        # automated --- 7/15
 # DBI::dbWriteTable(NBAdb, "PlayerProfiles", players, overwrite = T)                  # automated ---
 # DBI::dbWriteTable(NBAdb, "PlayByPlay", play_logs_all, append = T)                   # automated --- 7/15
-# DBI::dbWriteTable(NBAdb, "BoxScorePlayer", dataBoxScorePlayerNBA, append = T)       # automated --- slow scrape
-# DBI::dbWriteTable(NBAdb, "BoxScoreTeam", dataBoxScoreTeamNBA, append = T)           # automated --- slow scrape
+# DBI::dbWriteTable(NBAdb, "box_scores_team", box_scores_team, append = T)            # automated --- 10/24
+# DBI::dbWriteTable(NBAdb, "box_scores_player", box_scores_player, append = T)        # automated --- 10/24
+# DBI::dbWriteTable(NBAdb, "BoxScorePlayer", dataBoxScorePlayerNBA, append = T)       # remove
+# DBI::dbWriteTable(NBAdb, "BoxScoreTeam", dataBoxScoreTeamNBA, append = T)           # remove
 # DBI::dbWriteTable(NBAdb, "TeamDictionary", team_dict, overwrite = T)                # as needed ---
-# DBI::dbWriteTable(NBAdb, "BasicBoxScoreBREF", master_fic)                           # Box_Scores_BREF --- limited
-# DBI::dbWriteTable(NBAdb, "AdvancedBoxScoreBREF", master_vorp)                       # Box_Scores_BREF --- limited
+# DBI::dbWriteTable(NBAdb, "BasicBoxScoreBREF", master_fic)                           # Box_Scores_BREF --- 20 per min.
+# DBI::dbWriteTable(NBAdb, "AdvancedBoxScoreBREF", master_vorp)                       # Box_Scores_BREF --- 20 per min.
 # DBI::dbWriteTable(NBAdb, "GamesBREF", game_df, append = T)                          # Box_Scores_BREF --- 7/15
-# DBI::dbWriteTable(NBAdb, "GameLogsAdj", final_db)                                   # dbRefresh --- rework 9/30
+# DBI::dbWriteTable(NBAdb, "game_logs_adj", nba_final, overwrite = T)                 # nba_db_refresh
+# DBI::dbWriteTable(NBAdb, "box_scores_gbg", box_scores_gbg, overwrite = T)           # nba_db_refresh
+# DBI::dbWriteTable(NBAdb, "nba_league_avg", nba_league_avg, overwrite = T)           # nba_db_refresh
+# DBI::dbWriteTable(NBAdb, "GameLogsAdj", final_db)                                   # remove
 # DBI::dbWriteTable(NBAdb, "ResultsBook", df)                                         # model ---
 # DBI::dbWriteTable(NBAdb, "Plays", df)                                               # model ---
 # DBI::dbWriteTable(NBAdb, "Odds", df)                                                # model ---
@@ -186,7 +214,7 @@ DBI::dbDisconnect(NBAdb)
 
 ## how to query
 df <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db"),
-                 "GameLogsTeam") %>%
+                 "nba_league_avg") %>%
     collect() %>%
     mutate(date_game = as_date(date_game, origin ="1970-01-01"))
 
