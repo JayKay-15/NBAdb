@@ -7,10 +7,9 @@ year <- "2024"
 monthList <- c("october", "november", "december", "january", "february",
                "march", "april")
 playoff_startDate <- ymd("2024-04-16")
-outputfile <- "NBA_2023_game_data.rds"
-
 
 df <- data.frame()
+
 for (month in monthList) {
 
     url <- paste0("https://www.basketball-reference.com/leagues/NBA_", year, 
@@ -53,21 +52,19 @@ df$game_type <- with(df, ifelse(date_game >= playoff_startDate,
 
 df$box_score_text <- NULL
 
-df <- df %>% filter(game_type == "Regular")
+df <- df %>% filter(game_type == "Regular" & !is.na(visitor_pts))
 
-saveRDS(df, "./box_scores/2023_games.rds")
+saveRDS(df, "./box_scores/2024_games.rds")
 
 #### box scores scraper ----
-# load in games rds file and filter already scraped
+df_games <- read_rds("./box_scores/2024_games.rds")
+df_adv <- read_rds("./box_scores/2024_adv.rds")
 
-df_adv <- read_rds("./box_scores/df_adv.rds")
-df_basic <- read_rds("./box_scores/df_basic.rds")
-
-
-
+game_df <- df_games %>% filter(!game_id %in% df_adv$game_id)
+n_distinct(games_df$game_id)
 
 
-#### # scrape advanced stats on timed loop ----
+#### scrape advanced stats on timed loop ----
 master_df <- data.frame()
 game_ids <- game_df$game_id
 games_per_batch <- 20
@@ -127,10 +124,12 @@ for (current_id in game_ids) {
     master_df <- rbind(master_df,full_box)
 }
 
-saveRDS(master_df, "./box_scores/NBA_2023_advanced_box_scores.rds")
+master_df <- df_adv %>% bind_rows(master_df)
+
+saveRDS(master_df, "./box_scores/2024_adv.rds")
 
 
-#### # scrape basic stats on timed loop ----
+#### scrape basic stats on timed loop ----
 master_df <- data.frame()
 game_ids <- game_df$game_id
 games_per_batch <- 20
