@@ -95,7 +95,10 @@ for (i in 2:length(cleaned_team_list)) {
 
 team_all_stats <- combined_df %>%
     select(-available_flag) %>%
-    arrange(game_date, game_id)
+    arrange(game_date, game_id) %>%
+    mutate(location = if_else(grepl("@", matchup) == T, "away", "home"),
+           game_date = as_date(game_date)) %>%
+    select(-contains("opp"))
 
 # saveRDS(team_all_stats, "./team_all_stats.rds")
 
@@ -261,4 +264,43 @@ df <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "box_scores_team") %>%
 # 
 # # rename new data by remove "_tmp"
 # DBI::dbExecute(con, "ALTER TABLE flights_tmp RENAME TO flights;")
+
+box_scores_home <- team_all_stats %>%
+    filter(location == "home") %>%
+    select(game_id, team_name, fgm:pct_uast_fgm) %>%
+    rename_with(~paste0("opp_", .),
+                -c(game_id))
+
+box_scores <- team_all_stats %>%
+    filter(location == "away") %>%
+    select(season_year:matchup, location, wl:pct_uast_fgm) %>%
+    left_join(box_scores_home, by = "game_id") %>%
+    select(season_year:team_name, opp_team_name, game_id:pct_uast_fgm, opp_fgm:opp_pct_uast_fgm)
+
+box_scores_wt <- box_scores %>%
+    group_by(season_year, team_id) %>%
+    mutate(across(c(min:opp_pct_uast_fgm),
+                  \(x) pracma::movavg(x, n = 10, type = 'e'))) %>%
+    ungroup()
+
+box_scores_base <- box_scores_wt %>%
+    group_by(team_id) %>%
+    mutate(across(fgm:opp_pct_uast_fgm, \(x) lag(x, n = 1))) %>%
+    na.exclude()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
