@@ -70,37 +70,76 @@ players <- player_profiles(player_ids = unique(TeamShots_db$idPlayer))
 ## box scores team & box_scores_player
 team_list <- read_rds("./team_stats_list.rds")
 
-all_columns <- unlist(sapply(team_list, names))
-
-keep_columns <- c("GAME_ID", "TEAM_NAME")
-duplicate_columns <- all_columns[duplicated(all_columns) & !(all_columns %in% keep_columns)]
-
-team_list[-1] <- lapply(team_list[-1], function(df) {
-    df <- df[, !names(df) %in% duplicate_columns]
-    return(df)
-})
-
 cleaned_team_list <- lapply(team_list, function(df) {
     df <- clean_names(df)
-    cols_to_remove <- grep("^e_.+|_rank$", names(df))
-    df <- df[, -cols_to_remove]
+    # cols_to_remove <- grep("^(e_|opp_|.+_rank$)", names(df))
+    # df <- df[, -cols_to_remove]
     return(df)
 })
 
 combined_df <- cleaned_team_list[[1]]
 
+# Iterate through the remaining data frames and join them while removing existing columns
 for (i in 2:length(cleaned_team_list)) {
-    combined_df <- left_join(combined_df, cleaned_team_list[[i]], by = c("game_id", "team_name"))
+    df_to_join <- cleaned_team_list[[i]]
+    existing_cols <- intersect(names(combined_df), names(df_to_join))
+    existing_cols <- setdiff(existing_cols, c("game_id", "team_name"))
+    df_to_join <- df_to_join %>% select(-any_of(existing_cols))
+    combined_df <- left_join(combined_df, df_to_join, by = c("game_id", "team_name"))
 }
 
 team_all_stats <- combined_df %>%
-    select(-available_flag) %>%
+    select(-starts_with(c("e_","opp_")), -ends_with(c("_rank","_flag"))) %>%
     arrange(game_date, game_id) %>%
     mutate(location = if_else(grepl("@", matchup) == T, "away", "home"),
            game_date = as_date(game_date)) %>%
-    select(-contains("opp"))
+    select(season_year:matchup, location, wl:pct_uast_fgm)
 
-# saveRDS(team_all_stats, "./team_all_stats.rds")
+opp_all_stats <- team_all_stats %>%
+    select(game_id, team_name, fgm:pct_uast_fgm) %>%
+    rename_with(~paste0("opp_", .), -c(game_id)) %>%
+    select(-opp_plus_minus)
+    
+all_stats <- team_all_stats %>%
+    inner_join(opp_all_stats, by = c("game_id"), relationship = "many-to-many") %>%
+    filter(team_name != opp_team_name) %>%
+    select(season_year:team_name, opp_team_name,
+           game_id:min, pts, opp_pts, plus_minus, fgm:opp_pct_uast_fgm) %>%
+    group_by(season_year, team_id, location) %>%
+    mutate(across(c(fgm:opp_pct_uast_fgm),
+                  \(x) pracma::movavg(x, n = 10, type = 'e'))) %>%
+    ungroup()
+
+base_stats <- all_stats %>%
+    filter(location == "away") %>%
+    select(season_year:plus_minus)
+
+away_stats <- all_stats %>%
+    filter(location == "away") %>%
+    select(game_id, team_name, fgm:opp_pct_uast_fgm) %>%
+    rename_with(~paste0("away_", .), -c(game_id, team_name)) %>%
+    group_by(team_name) %>%
+    mutate(across(away_fgm:away_opp_pct_uast_fgm, \(x) lag(x, n = 1))) %>%
+    ungroup()
+
+home_stats <- all_stats %>%
+    filter(location == "home") %>%
+    select(game_id, team_name, fgm:opp_pct_uast_fgm) %>%
+    rename_with(~paste0("home_", .), -c(game_id, team_name)) %>%
+    group_by(team_name) %>%
+    mutate(across(home_fgm:home_opp_pct_uast_fgm, \(x) lag(x, n = 1))) %>%
+    ungroup()
+
+nba_final <- base_stats %>%
+    left_join(away_stats, by = c("game_id" = "game_id",
+                                   "team_name" = "team_name")) %>%
+    left_join(home_stats, by = c("game_id" = "game_id",
+                                   "opp_team_name" = "team_name")) %>%
+    na.exclude() %>%
+    arrange(game_date, game_id) # add game count and b2b
+
+
+saveRDS(nba_final, "./nba_final.rds")
 
 
 player_list <- read_rds("./player_stats_list.rds")
