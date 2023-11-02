@@ -95,6 +95,35 @@ team_all_stats <- combined_df %>%
            game_date = as_date(game_date)) %>%
     select(season_year:matchup, location, wl:pct_uast_fgm)
 
+team_games <- team_all_stats %>%
+    distinct(season_year, game_id, game_date, team_id, team_name) %>%
+    group_by(season_year, team_id) %>%
+    mutate(
+        game_count_season = 1:n(),
+        days_rest_team = ifelse(game_count_season > 1,
+                                (game_date - lag(game_date) - 1),
+                                120),
+        days_next_game_team =
+            ifelse(game_count_season < 82,
+                   ((
+                       lead(game_date) - game_date
+                   ) - 1),
+                   120),
+        days_next_game_team = days_next_game_team %>% as.numeric(),
+        days_rest_team = days_rest_team %>% as.numeric(),
+        is_b2b = if_else(days_next_game_team == 0 |
+                             days_rest_team == 0, TRUE, FALSE),
+        is_b2b_first = if_else(lead(days_next_game_team) == 0, TRUE, FALSE),
+        is_b2b_second = if_else(lag(days_next_game_team) == 0, TRUE, FALSE)
+    ) %>%
+    ungroup() %>%
+    mutate_if(is.logical, ~ ifelse(is.na(.), FALSE, .)) %>%
+    select(game_id, team_name, is_b2b_first, is_b2b_second)
+
+opp_team_games <- team_games %>%
+    select(game_id, team_name, is_b2b_first, is_b2b_second) %>%
+    rename_with(~paste0("opp_", .), -c(game_id))
+
 opp_all_stats <- team_all_stats %>%
     select(game_id, team_name, fgm:pct_uast_fgm) %>%
     rename_with(~paste0("opp_", .), -c(game_id)) %>%
@@ -112,7 +141,12 @@ all_stats <- team_all_stats %>%
 
 base_stats <- all_stats %>%
     filter(location == "away") %>%
-    select(season_year:plus_minus)
+    left_join(odds_df %>% select(-hoopr_id) %>% mutate(statr_id = as.character(statr_id)),
+              by = c("game_id" = "statr_id")) %>%
+    left_join(team_games, by = c("game_id", "team_name")) %>%
+    left_join(opp_team_games, by = c("game_id", "opp_team_name")) %>%
+    select(season_year:plus_minus, is_b2b_first, is_b2b_second,
+           opp_is_b2b_first, opp_is_b2b_second, away_spread:home_implied_prob)
 
 away_stats <- all_stats %>%
     filter(location == "away") %>%
@@ -137,7 +171,6 @@ nba_final <- base_stats %>%
                                    "opp_team_name" = "team_name")) %>%
     na.exclude() %>%
     arrange(game_date, game_id) # add game count and b2b
-
 
 saveRDS(nba_final, "./nba_final.rds")
 
@@ -304,29 +337,98 @@ df <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "box_scores_team") %>%
 # # rename new data by remove "_tmp"
 # DBI::dbExecute(con, "ALTER TABLE flights_tmp RENAME TO flights;")
 
-box_scores_home <- team_all_stats %>%
-    filter(location == "home") %>%
-    select(game_id, team_name, fgm:pct_uast_fgm) %>%
-    rename_with(~paste0("opp_", .),
-                -c(game_id))
 
-box_scores <- team_all_stats %>%
-    filter(location == "away") %>%
-    select(season_year:matchup, location, wl:pct_uast_fgm) %>%
-    left_join(box_scores_home, by = "game_id") %>%
-    select(season_year:team_name, opp_team_name, game_id:pct_uast_fgm, opp_fgm:opp_pct_uast_fgm)
 
-box_scores_wt <- box_scores %>%
-    group_by(season_year, team_id) %>%
-    mutate(across(c(min:opp_pct_uast_fgm),
-                  \(x) pracma::movavg(x, n = 10, type = 'e'))) %>%
-    ungroup()
+set.seed(214)
 
-box_scores_base <- box_scores_wt %>%
-    group_by(team_id) %>%
-    mutate(across(fgm:opp_pct_uast_fgm, \(x) lag(x, n = 1))) %>%
-    na.exclude()
+# correlations ----
 
+# feature correlations
+cor_df <- nba_final %>%
+    select(is_b2b_first:opp_is_b2b_second,
+           away_implied_prob:home_opp_pct_uast_fgm)
+
+# check for extreme correlation
+cor_mx <- cor(cor_df)
+extreme_cor <- sum(abs(cor_mx[upper.tri(cor_mx)]) > .999)
+extreme_cor
+summary(cor_mx[upper.tri(cor_mx)])
+
+# find highly correlated features
+cor_cols <- caret::findCorrelation(cor_mx, cutoff = .5, exact = F, names = T)
+cor_cols
+
+# filter highly correlated features
+cor_df_new <- cor_df %>% select(-all_of(cor_cols))
+
+# check new set of features for correlation
+cor_mx_new <- cor(cor_df_new)
+caret::findCorrelation(cor_mx_new, cutoff = .5)
+summary(cor_mx_new[upper.tri(cor_mx_new)])
+
+# correlations - win
+model_win_all <- nba_final %>%
+    select(wl, is_b2b_first:opp_is_b2b_second,
+           away_implied_prob:home_opp_pct_uast_fgm) %>%
+    mutate(wl = if_else(wl == "W", 1, 0))
+
+# near zero variables
+nearZeroVar(model_win_all, saveMetrics = T)
+
+# filter highly correlated features
+model_win <- model_win_all %>% select(-all_of(cor_cols))
+
+# correlations - all variables
+cor_mx <- cor(model_win_all, model_win_all$wl)
+cor_mx <- as.matrix(cor_mx[order(abs(cor_mx[,1]), decreasing = T),])
+cor_mx
+
+# correlations - filtered variables
+cor_mx <- cor(model_win, model_win$wl)
+cor_mx <- as.matrix(cor_mx[order(abs(cor_mx[,1]), decreasing = T),])
+cor_mx
+
+# correlations - team score
+model_ts_all <- nba_final %>%
+    select(pts, is_b2b_first:opp_is_b2b_second,
+           away_implied_prob:home_opp_pct_uast_fgm)
+
+# near zero variables
+nearZeroVar(model_ts_all, saveMetrics = T)
+
+# filter highly correlated features
+model_ts <- model_ts_all %>% select(-all_of(cor_cols))
+
+# correlations - all variables
+cor_mx <- cor(model_ts_all, model_ts_all$pts)
+cor_mx <- as.matrix(cor_mx[order(abs(cor_mx[,1]), decreasing = T),])
+cor_mx
+
+# correlations - filtered variables
+cor_mx <- cor(model_ts, model_ts$pts)
+cor_mx <- as.matrix(cor_mx[order(abs(cor_mx[,1]), decreasing = T),])
+cor_mx
+
+# correlations - opp score
+model_os_all <- nba_final %>%
+    select(opp_pts, is_b2b_first:opp_is_b2b_second,
+           away_implied_prob:home_opp_pct_uast_fgm)
+
+# near zero variables
+nearZeroVar(model_os_all, saveMetrics = T)
+
+# filter highly correlated features
+model_os <- model_os_all %>% select(-all_of(cor_cols))
+
+# correlations - all variables
+cor_mx <- cor(model_os_all, model_os_all$opp_pts)
+cor_mx <- as.matrix(cor_mx[order(abs(cor_mx[,1]), decreasing = T),])
+cor_mx
+
+# correlations - filtered variables
+cor_mx <- cor(model_os, model_os$opp_pts)
+cor_mx <- as.matrix(cor_mx[order(abs(cor_mx[,1]), decreasing = T),])
+cor_mx
 
 
 
