@@ -19,7 +19,8 @@ game_logs(seasons = c(2024), result_types = c("team","players"))
 # pull historical odds
 odds_df <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db"),
                       "odds_table") %>% 
-    collect()
+    collect() %>%
+    mutate(statr_id = paste0("00", statr_id))
 
 # create box scores and additional stats
 box_scores <- dataGameLogsTeam %>%
