@@ -393,10 +393,11 @@ DBI::dbWriteTable(NBAdb, "nba_team_avg", nba_team_avg, overwrite = T)
 
 DBI::dbDisconnect(NBAdb)
 
-
 ## refresh odds ---------------------------------------------------------------
 # update nba betting odds ----
-nba_schedule <- as.data.frame(load_nba_schedule(seasons = 2014:2023))
+nba_schedule <- as.data.frame(hoopR::load_nba_schedule(seasons = 2014:2023)) %>%
+    filter(type_id == 1)
+ids <- nba_schedule$id
 
 # initialize an empty list to store odds data frames
 odds_list <- list()
@@ -404,7 +405,7 @@ odds_list <- list()
 # define the function to collect odds for a single id
 collect_odds <- function(i) {
     tryCatch({
-        odds_list <- espn_nba_betting(i)
+        odds_list <- hoopR::espn_nba_betting(i)
         odds_picks <- odds_list$pickcenter
         
         odds <- odds_picks %>%
@@ -439,7 +440,7 @@ odds_df <- bind_rows(odds_list)
 odds_df <- readRDS("odds_v2")
 
 odds_clean <- odds_df %>%
-    filter(provider_name == "teamrankings") %>%
+    filter(provider_name == "ESPN Bet") %>%
     pivot_longer(cols = c(away_team_odds_team_id, home_team_odds_team_id),
                  names_to = "id_type", values_to = "team_id") %>%
     pivot_longer(cols = c(away_team_odds_money_line, home_team_odds_money_line),
@@ -472,7 +473,11 @@ saveRDS(nba_schedule_odds, "odds_clean_v2")
 
 
 odds_df <- readRDS("odds_final")
-DBI::dbWriteTable(NBAdb, "odds_table", odds_df, overwrite = T)
+# DBI::dbWriteTable(NBAdb, "odds_table", odds_df, overwrite = T)
+
+missing_games <- nba_schedule %>% filter(!id %in% odds_df$hoopr_id)
+ids <- missing_games$id 
 
 
+hoopR::espn_nba_betting(401584759)
 
