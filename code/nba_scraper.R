@@ -1,5 +1,6 @@
 library(tidyverse)
 library(data.table)
+library(janitor)
 library(magrittr)
 
 #### Scrape a single stat and year ----
@@ -36,7 +37,7 @@ params = list(
     `Period` = "0",
     `PlusMinus` = "N",
     `Rank` = "N",
-    `Season` = "2022-23",
+    `Season` = "2023-24",
     `SeasonSegment` = "",
     `SeasonType` = "Regular Season",
     `ShotClockRange` = "",
@@ -94,7 +95,7 @@ params = list(
 )
 
 # Define the range of years you want to scrape
-start_year <- 2009
+start_year <- 2013
 end_year <- 2022
 
 # Initialize an empty data frame to store the results
@@ -623,6 +624,288 @@ openxlsx::write.xlsx(dt, file = "./output/isolation_off.xlsx")
 #     res$content %>%
 #     rawToChar() %>%
 #     jsonlite::fromJSON(simplifyVector = T)
+
+
+
+
+
+
+#### nba schedule scraper ----
+headers = c(
+    `Sec-Fetch-Site` = "same-site",
+    `Accept` = "*/*",
+    `Origin` = "https://www.nba.com",
+    `Sec-Fetch-Dest` = "empty",
+    `Accept-Language` = "en-US,en;q=0.9",
+    `Sec-Fetch-Mode` = "cors",
+    `Host` = "cdn.nba.com",
+    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+    `Referer` = "https://www.nba.com/",
+    `Accept-Encoding` = "gzip, deflate, br",
+    `Connection` = "keep-alive"
+)
+
+res <- httr::GET(url = "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json", httr::add_headers(.headers=headers))
+data <- httr::content(res, "text")
+json_data <- jsonlite::fromJSON(data)
+
+games_list <- json_data[["leagueSchedule"]][["gameDates"]][["games"]]
+
+schedule_df <- list()
+
+for (game_info in games_list) {
+    # Extract gameId and gameDateTimeEst
+    gameId <- game_info$gameId
+    gameDateEst <- game_info$gameDateEst
+    gameSeriesText <- game_info$seriesText
+    
+    # Extract the identifiers for awayTeam and homeTeam
+    awayTeamId <- game_info$awayTeam$id
+    homeTeamId <- game_info$homeTeam$id
+    
+    # Extract the data frames
+    away_schedule <- game_info$awayTeam
+    home_schedule <- game_info$homeTeam
+    
+    # Add gameId, gameDateTimeEst, and identifiers to both data frames
+    away_schedule$gameId <- gameId
+    away_schedule$gameDateEst <- gameDateEst
+    away_schedule$location <- "away"
+    away_schedule$seriesText <- gameSeriesText
+    
+    home_schedule$gameId <- gameId
+    home_schedule$gameDateEst <- gameDateEst
+    home_schedule$location <- "home"
+    home_schedule$seriesText <- gameSeriesText
+    
+    # Add the modified data frames to the list
+    schedule_df <- c(schedule_df, list(away_schedule, home_schedule))
+}
+
+nba_schedule <- rbindlist(schedule_df) %>%
+    clean_names() %>%
+    filter(series_text != "Preseason" & team_name != "") %>%
+    mutate(game_date = as_date(game_date_est),
+           team_name = paste0(team_city, " ", team_name)) %>%
+    select(game_date, game_id, location, team_name) %>%
+    arrange(game_date, game_id) %>%
+    pivot_wider(
+        id_cols = c(game_date, game_id),
+        names_from = location,
+        values_from = team_name) %>%
+    rename(away_team_name = away,
+           home_team_name = home)
+
+b2b_away <- nba_schedule %>%
+    distinct(game_date, game_id, away_team_name) %>%
+    group_by(away_team_name) %>%
+    mutate(
+        game_count_season = 1:n(),
+        days_rest_team = ifelse(game_count_season > 1,
+                                (game_date - lag(game_date) - 1),
+                                120),
+        days_next_game_team =
+            ifelse(game_count_season < 82,
+                   ((
+                       lead(game_date) - game_date
+                   ) - 1),
+                   120),
+        days_next_game_team = days_next_game_team %>% as.numeric(),
+        days_rest_team = days_rest_team %>% as.numeric(),
+        is_b2b = if_else(days_next_game_team == 0 |
+                             days_rest_team == 0, TRUE, FALSE),
+        is_b2b_first = if_else(lead(days_next_game_team) == 0, TRUE, FALSE),
+        is_b2b_second = if_else(lag(days_next_game_team) == 0, TRUE, FALSE)
+    ) %>%
+    ungroup() %>%
+    mutate_if(is.logical, ~ ifelse(is.na(.), FALSE, .)) %>%
+    select(game_id, is_b2b_first, is_b2b_second)
+
+b2b_home <- nba_schedule %>%
+    distinct(game_date, game_id, home_team_name) %>%
+    group_by(home_team_name) %>%
+    mutate(
+        game_count_season = 1:n(),
+        days_rest_team = ifelse(game_count_season > 1,
+                                (game_date - lag(game_date) - 1),
+                                120),
+        days_next_game_team =
+            ifelse(game_count_season < 82,
+                   ((
+                       lead(game_date) - game_date
+                   ) - 1),
+                   120),
+        days_next_game_team = days_next_game_team %>% as.numeric(),
+        days_rest_team = days_rest_team %>% as.numeric(),
+        is_b2b = if_else(days_next_game_team == 0 |
+                             days_rest_team == 0, TRUE, FALSE),
+        is_b2b_first = if_else(lead(days_next_game_team) == 0, TRUE, FALSE),
+        is_b2b_second = if_else(lag(days_next_game_team) == 0, TRUE, FALSE)
+    ) %>%
+    ungroup() %>%
+    mutate_if(is.logical, ~ ifelse(is.na(.), FALSE, .)) %>%
+    select(game_id, is_b2b_first, is_b2b_second) %>%
+    rename_with(~paste0("opp_", .), -c(game_id))
+
+b2b_schedule <- b2b_away %>% left_join(b2b_home)
+
+nba_schedule <- nba_schedule %>% left_join(b2b_schedule)
+
+saveRDS(nba_schedule, "./nba_schedule.rds")
+
+
+
+
+
+
+
+# Create a function to scrape NBA schedule
+scrape_nba_schedule <- function(url, headers) {
+    # Send a GET request to the specified URL with the given headers
+    res <- httr::GET(url = url, httr::add_headers(.headers = headers))
+    data <- httr::content(res, "text")
+    json_data <- jsonlite::fromJSON(data)
+    
+    games_list <- json_data[["leagueSchedule"]][["gameDates"]][["games"]]
+    
+    schedule_df <- list()
+    
+    for (game_info in games_list) {
+        # Extract gameId and gameDateTimeEst
+        gameId <- game_info$gameId
+        gameDateEst <- game_info$gameDateEst
+        gameSeriesText <- game_info$seriesText
+        
+        # Extract the identifiers for awayTeam and homeTeam
+        awayTeamId <- game_info$awayTeam$id
+        homeTeamId <- game_info$homeTeam$id
+        
+        # Extract the data frames
+        away_schedule <- game_info$awayTeam
+        home_schedule <- game_info$homeTeam
+        
+        # Add gameId, gameDateTimeEst, and identifiers to both data frames
+        away_schedule$gameId <- gameId
+        away_schedule$gameDateEst <- gameDateEst
+        away_schedule$location <- "away"
+        away_schedule$seriesText <- gameSeriesText
+        
+        home_schedule$gameId <- gameId
+        home_schedule$gameDateEst <- gameDateEst
+        home_schedule$location <- "home"
+        home_schedule$seriesText <- gameSeriesText
+        
+        # Add the modified data frames to the list
+        schedule_df <- c(schedule_df, list(away_schedule, home_schedule))
+    }
+    
+    nba_schedule <- rbindlist(schedule_df) %>%
+        clean_names() %>%
+        filter(series_text != "Preseason" & team_name != "") %>%
+        mutate(game_date = as_date(game_date_est),
+               team_name = paste0(team_city, " ", team_name)) %>%
+        select(game_date, game_id, location, team_name) %>%
+        arrange(game_date, game_id) %>%
+        pivot_wider(
+            id_cols = c(game_date, game_id),
+            names_from = location,
+            values_from = team_name) %>%
+        rename(away_team_name = away,
+               home_team_name = home)
+    
+    b2b_away <- nba_schedule %>%
+        distinct(game_date, game_id, away_team_name) %>%
+        group_by(away_team_name) %>%
+        mutate(
+            game_count_season = 1:n(),
+            days_rest_team = ifelse(game_count_season > 1,
+                                    (game_date - lag(game_date) - 1),
+                                    120),
+            days_next_game_team =
+                ifelse(game_count_season < 82,
+                       ((
+                           lead(game_date) - game_date
+                       ) - 1),
+                       120),
+            days_next_game_team = days_next_game_team %>% as.numeric(),
+            days_rest_team = days_rest_team %>% as.numeric(),
+            is_b2b = if_else(days_next_game_team == 0 |
+                                 days_rest_team == 0, TRUE, FALSE),
+            is_b2b_first = if_else(lead(days_next_game_team) == 0, TRUE, FALSE),
+            is_b2b_second = if_else(lag(days_next_game_team) == 0, TRUE, FALSE)
+        ) %>%
+        ungroup() %>%
+        mutate_if(is.logical, ~ ifelse(is.na(.), FALSE, .)) %>%
+        select(game_id, is_b2b_first, is_b2b_second)
+    
+    b2b_home <- nba_schedule %>%
+        distinct(game_date, game_id, home_team_name) %>%
+        group_by(home_team_name) %>%
+        mutate(
+            game_count_season = 1:n(),
+            days_rest_team = ifelse(game_count_season > 1,
+                                    (game_date - lag(game_date) - 1),
+                                    120),
+            days_next_game_team =
+                ifelse(game_count_season < 82,
+                       ((
+                           lead(game_date) - game_date
+                       ) - 1),
+                       120),
+            days_next_game_team = days_next_game_team %>% as.numeric(),
+            days_rest_team = days_rest_team %>% as.numeric(),
+            is_b2b = if_else(days_next_game_team == 0 |
+                                 days_rest_team == 0, TRUE, FALSE),
+            is_b2b_first = if_else(lead(days_next_game_team) == 0, TRUE, FALSE),
+            is_b2b_second = if_else(lag(days_next_game_team) == 0, TRUE, FALSE)
+        ) %>%
+        ungroup() %>%
+        mutate_if(is.logical, ~ ifelse(is.na(.), FALSE, .)) %>%
+        select(game_id, is_b2b_first, is_b2b_second) %>%
+        rename_with(~paste0("opp_", .), -c(game_id))
+    
+    b2b_schedule <- b2b_away %>% left_join(b2b_home)
+    
+    nba_schedule <- nba_schedule %>% left_join(b2b_schedule)
+    
+    return(nba_schedule)
+}
+
+# Define the URL and headers
+url <- "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json"
+headers <- c(
+    `Sec-Fetch-Site` = "same-site",
+    `Accept` = "*/*",
+    `Origin` = "https://www.nba.com",
+    `Sec-Fetch-Dest` = "empty",
+    `Accept-Language` = "en-US,en;q=0.9",
+    `Sec-Fetch-Mode` = "cors",
+    `Host` = "cdn.nba.com",
+    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+    `Referer` = "https://www.nba.com/",
+    `Accept-Encoding` = "gzip, deflate, br",
+    `Connection` = "keep-alive"
+)
+
+# Call the function to scrape the NBA schedule
+nba_schedule <- scrape_nba_schedule(url, headers)
+
+
+NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db")
+DBI::dbWriteTable(NBAdb, "nba_schedule_current", nba_schedule, overwrite = T)
+DBI::dbDisconnect(NBAdb)
+
+df <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "nba_schedule_current") %>%
+    collect() %>%
+    mutate(game_date = as_date(game_date, origin ="1970-01-01"))
+
+
+
+
+
+
+
+
 
 
 
