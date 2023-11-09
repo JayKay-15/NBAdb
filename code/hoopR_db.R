@@ -161,7 +161,7 @@ df <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "nba_odds") %>%
 
 
 
-all_data <- as.data.frame(nba_schedule_bridge(seasons = 2024))
+all_data <- as.data.frame(nba_schedule_bridge(seasons = 2014:2023))
 
 statr_schedule <- all_data %>%
     clean_names() %>%
@@ -175,7 +175,7 @@ statr_schedule <- all_data %>%
     filter(location == "away") %>%
     arrange(game_id)
 
-hoopr_schedule <- as.data.frame(hoopR::load_nba_schedule(seasons = 2024))
+hoopr_schedule <- as.data.frame(hoopR::load_nba_schedule(seasons = 2014:2023))
 hoopr_schedule <- hoopr_schedule %>%
     filter(type_id == 1) %>%
     select(id, date, away_display_name) %>%
