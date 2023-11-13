@@ -484,8 +484,6 @@ mamba_nba <- function(seasons) {
         rename_with(~paste0("opp_", .), -c(game_id)) %>%
         select(-opp_plus_minus)
     
-    min_games <- min(team_games$game_count_season)
-    
     all_stats <- team_all_stats %>%
         inner_join(opp_all_stats, by = c("game_id"), relationship = "many-to-many") %>%
         filter(team_name != opp_team_name) %>%
@@ -493,13 +491,7 @@ mamba_nba <- function(seasons) {
                game_id:min, pts, opp_pts, plus_minus, fgm:opp_pct_uast_fgm) %>%
         group_by(season_year, team_id, location) %>%
         mutate(across(c(fgm:opp_pct_uast_fgm),
-                      ~ if (min_games >= 10) {
-                          pracma::movavg(.x, n = 10, type = 'e')
-                      } else if (min_games >= 2) {
-                          pracma::movavg(.x, n = min_games, type = 'e')
-                      } else {
-                          mean(.x)
-                      })
+                      \(x) pracma::movavg(x, n = 10, type = 'e'))
         ) %>%
         ungroup()
     
@@ -519,7 +511,7 @@ mamba_nba <- function(seasons) {
     away_stats <- all_stats %>%
         filter(location == "away") %>%
         select(season_year, game_id, team_name, fgm:opp_pct_uast_fgm) %>%
-        rename_with(~paste0("away_", .), -c(game_id, team_name)) %>%
+        rename_with(~paste0("away_", .), -c(season_year, game_id, team_name)) %>%
         group_by(season_year, team_name) %>%
         mutate(across(away_fgm:away_opp_pct_uast_fgm, \(x) lag(x, n = 1))) %>%
         ungroup() %>%
@@ -528,7 +520,7 @@ mamba_nba <- function(seasons) {
     home_stats <- all_stats %>%
         filter(location == "home") %>%
         select(season_year, game_id, team_name, fgm:opp_pct_uast_fgm) %>%
-        rename_with(~paste0("home_", .), -c(game_id, team_name)) %>%
+        rename_with(~paste0("home_", .), -c(season_year, game_id, team_name)) %>%
         group_by(season_year, team_name) %>%
         mutate(across(home_fgm:home_opp_pct_uast_fgm, \(x) lag(x, n = 1))) %>%
         ungroup() %>%
@@ -557,7 +549,6 @@ mamba <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "mamba_stats") %>%
 
 df_check <- mamba %>%
     group_by(season_year) %>% tally()
-
 
 
 #### scrape all team stats ----
