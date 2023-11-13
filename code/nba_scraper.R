@@ -173,7 +173,7 @@ params = list(
 )
 
 # Define the range of years you want to scrape
-start_year <- 2009
+start_year <- 2013
 end_year <- 2022
 
 # Define the list of MeasureType values
