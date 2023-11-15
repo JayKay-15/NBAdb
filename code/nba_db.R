@@ -489,11 +489,72 @@ mamba_nba <- function(seasons) {
         filter(team_name != opp_team_name) %>%
         select(season_year:team_name, opp_team_name,
                game_id:min, pts, opp_pts, plus_minus, fgm:opp_pct_uast_fgm) %>%
+        mutate(pts_2pt_mr = round(pct_pts_2pt_mr*pts,0),
+               ast_2pm = round(pct_ast_2pm*(fgm-fg3m),0),
+               ast_3pm = round(pct_ast_3pm*fg3m,0),
+               opp_pts_2pt_mr = round(opp_pct_pts_2pt_mr*opp_pts,0),
+               opp_ast_2pm = round(opp_pct_ast_2pm*(opp_fgm-opp_fg3m),0),
+               opp_ast_3pm = round(opp_pct_ast_3pm*opp_fg3m,0)
+        ) %>%
         group_by(season_year, team_id, location) %>%
         mutate(across(c(fgm:opp_pct_uast_fgm),
                       \(x) pracma::movavg(x, n = 10, type = 'e'))
         ) %>%
-        ungroup()
+        ungroup() %>%
+        mutate(fg_pct = fgm/fga,
+               fg3_pct = fg3m/fg3a,
+               ft_pct = ftm/fta,
+               ast_pct = ast/fgm,
+               oreb_pct = oreb/(oreb+opp_dreb),
+               dreb_pct = dreb/(dreb+opp_oreb),
+               reb_pct = reb/(reb+opp_reb),
+               tm_tov_pct = tov/poss,
+               efg_pct = (fgm+(0.5*fg3m))/fga,
+               ts_pct = pts/(2*(fga+0.44*fta)),
+               fta_rate = fta/fga,
+               pct_fga_2pt = (fga-fg3a)/fga,
+               pct_fga_3pt = 1-pct_fga_2pt,
+               pct_pts_2pt = ((fgm-fg3m)*2)/pts,
+               pct_pts_2pt_mr = pts_2pt_mr/pts,
+               pct_pts_3pt = (fg3m*3)/pts,
+               pct_pts_fb = pts_fb/pts,
+               pct_pts_ft = ftm/pts,
+               pct_pts_off_tov = pts_off_tov/pts,
+               pct_pts_paint = pts_paint/pts,
+               pct_ast_2pm = ast_2pm/(fgm-fg3m),
+               pct_uast_2pm = 1-pct_ast_2pm,
+               pct_ast_3pm = ast_3pm/fg3m,
+               pct_uast_3pm = 1-pct_ast_3pm,
+               pct_ast_fgm = ast_pct,
+               pct_uast_fgm = 1-ast_pct,
+               opp_fg_pct = opp_fgm/opp_fga,
+               opp_fg3_pct = opp_fg3m/opp_fg3a,
+               opp_ft_pct = opp_ftm/opp_fta,
+               opp_ast_pct = opp_ast/opp_fgm,
+               opp_oreb_pct = opp_oreb/(opp_oreb+dreb),
+               opp_dreb_pct = opp_dreb/(opp_dreb+oreb),
+               opp_reb_pct = opp_reb/(reb+opp_reb),
+               opp_tm_tov_pct = opp_tov/opp_poss,
+               opp_efg_pct = (opp_fgm+(0.5*opp_fg3m))/opp_fga,
+               opp_ts_pct = opp_pts/(2*(opp_fga+0.44*opp_fta)),
+               opp_fta_rate = opp_fta/opp_fga,
+               opp_pct_fga_2pt = (opp_fga-opp_fg3a)/opp_fga,
+               opp_pct_fga_3pt = 1-opp_pct_fga_2pt,
+               opp_pct_pts_2pt = ((opp_fgm-opp_fg3m)*2)/opp_pts,
+               opp_pct_pts_2pt_mr = opp_pts_2pt_mr/opp_pts,
+               opp_pct_pts_3pt = (opp_fg3m*3)/opp_pts,
+               opp_pct_pts_fb = opp_pts_fb/opp_pts,
+               opp_pct_pts_ft = opp_ftm/opp_pts,
+               opp_pct_pts_off_tov = opp_pts_off_tov/opp_pts,
+               opp_pct_pts_paint = opp_pts_paint/opp_pts,
+               opp_pct_ast_2pm = opp_ast_2pm/(opp_fgm-opp_fg3m),
+               opp_pct_uast_2pm = 1-opp_pct_ast_2pm,
+               opp_pct_ast_3pm = opp_ast_3pm/opp_fg3m,
+               opp_pct_uast_3pm = 1-opp_pct_ast_3pm,
+               opp_pct_ast_fgm = opp_ast_pct,
+               opp_pct_uast_fgm = 1-opp_ast_pct) %>%
+        select(-c(pts_2pt_mr, ast_2pm, ast_3pm,
+                  opp_pts_2pt_mr, opp_ast_2pm, opp_ast_3pm))
     
     odds_df <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db"),
                           "nba_odds") %>% 
@@ -550,6 +611,7 @@ mamba <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "mamba_stats") %>%
 df_check <- mamba %>%
     group_by(season_year) %>% tally()
 
+saveRDS(nba_final, "./mamba_stats_w20.rds")
 
 #### scrape all team stats ----
 
@@ -833,7 +895,7 @@ scrape_nba_player_stats <- function(seasons) {
         select(game_id, player_name,
                is_b2b_first, is_b2b_second, game_count_season)
 
-    nba_final <- team_all_stats %>%
+    nba_final <- player_all_stats %>%
         left_join(player_games, by = c("game_id", "player_name")) %>%
         arrange(game_id, location)
     
