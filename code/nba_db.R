@@ -498,7 +498,7 @@ mamba_nba <- function(seasons) {
         ) %>%
         group_by(season_year, team_id, location) %>%
         mutate(across(c(fgm:opp_pct_uast_fgm),
-                      \(x) pracma::movavg(x, n = 10, type = 'e'))
+                      \(x) pracma::movavg(x, n = 15, type = 'e'))
         ) %>%
         ungroup() %>%
         mutate(fg_pct = fgm/fga,
@@ -611,7 +611,7 @@ mamba <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "mamba_stats") %>%
 df_check <- mamba %>%
     group_by(season_year) %>% tally()
 
-saveRDS(nba_final, "./mamba_stats_w20.rds")
+# saveRDS(nba_final, "./mamba_stats_w15.rds")
 
 #### scrape all team stats ----
 
