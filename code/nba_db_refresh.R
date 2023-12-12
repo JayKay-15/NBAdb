@@ -4,6 +4,10 @@ library(nbastatR)
 library(RSQLite)
 library(DBI)
 
+###################################
+#### Old Method Using nbastatR #### 
+###################################
+
 
 Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
 
@@ -393,91 +397,6 @@ DBI::dbWriteTable(NBAdb, "nba_team_avg", nba_team_avg, overwrite = T)
 
 DBI::dbDisconnect(NBAdb)
 
-## refresh odds ---------------------------------------------------------------
-# update nba betting odds ----
-nba_schedule <- as.data.frame(hoopR::load_nba_schedule(seasons = 2014:2023)) %>%
-    filter(type_id == 1)
-ids <- nba_schedule$id
 
-# initialize an empty list to store odds data frames
-odds_list <- list()
-
-# define the function to collect odds for a single id
-collect_odds <- function(i) {
-    tryCatch({
-        odds_list <- hoopR::espn_nba_betting(i)
-        odds_picks <- odds_list$pickcenter
-        
-        odds <- odds_picks %>%
-            mutate(game_id = i) %>%
-            select(game_id, provider_name, spread, over_under,
-                   away_team_odds_team_id, home_team_odds_team_id,
-                   away_team_odds_favorite, home_team_odds_favorite,
-                   away_team_odds_money_line, home_team_odds_money_line)
-        
-        print(paste0("Collected odds for ", i))
-        
-        return(odds)
-    }, error = function(e) {
-        cat("Error occurred for id:", i, "- Skipping.\n")
-        return(NULL) # return NULL to indicate that there was an error
-    })
-}
-
-# use lapply to collect odds for each id and store them in the odds_list
-odds_list <- lapply(ids, collect_odds)
-
-# filter out NULL elements which correspond to errors
-odds_list <- odds_list[sapply(odds_list, function(x) !is.null(x))]
-
-# combine the individual data frames into one using bind_rows
-odds_df <- bind_rows(odds_list)
-
-# save rds
-# saveRDS(odds_df, "odds_v2")
-
-
-odds_df <- readRDS("odds_v2")
-
-odds_clean <- odds_df %>%
-    filter(provider_name == "ESPN Bet") %>%
-    pivot_longer(cols = c(away_team_odds_team_id, home_team_odds_team_id),
-                 names_to = "id_type", values_to = "team_id") %>%
-    pivot_longer(cols = c(away_team_odds_money_line, home_team_odds_money_line),
-                 names_to = "line_type", values_to = "moneyline") %>%
-    filter((id_type == "away_team_odds_team_id" &
-                line_type == "away_team_odds_money_line") |
-               (id_type == "home_team_odds_team_id" &
-                    line_type == "home_team_odds_money_line")) %>%
-    mutate(location = ifelse(grepl("away", id_type), "away", "home"),
-           spread = if_else(location == "away", spread*-1, spread),
-           team_id = as.numeric(team_id),
-           implied_prob = if_else(moneyline < 0, -moneyline / (-moneyline + 100),
-                                  100 / (moneyline + 100))) %>%
-    select(game_id, location, team_id, spread, moneyline, over_under, implied_prob)
-
-
-nba_schedule_odds <- nba_schedule %>%
-    select(game_id, game_date, away_display_name, home_display_name) %>%
-    pivot_longer(cols = away_display_name:home_display_name,
-                 names_to = "team_loc",
-                 values_to = "team_name") %>%
-    mutate(team_loc = if_else(team_loc == "away_display_name", "away", "home")) %>%
-    left_join(odds_clean, by = c("game_id" = "game_id",
-                                 "team_loc" = "location")) %>%
-    na.exclude() %>%
-    arrange(game_date, game_id)
-
-saveRDS(nba_schedule_odds, "odds_clean_v2")
-
-
-
-odds_df <- readRDS("odds_final")
-# DBI::dbWriteTable(NBAdb, "odds_table", odds_df, overwrite = T)
-
-missing_games <- nba_schedule %>% filter(!id %in% odds_df$hoopr_id)
-ids <- missing_games$id 
-
-
-hoopR::espn_nba_betting(401584759)
+  
 
