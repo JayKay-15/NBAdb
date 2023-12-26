@@ -1,6 +1,5 @@
 ### hoopR DB ------------------------------
 library(tidyverse)
-library(nbastatR)
 library(data.table)
 library(janitor)
 library(hoopR)
