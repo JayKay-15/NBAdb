@@ -1,4 +1,4 @@
-######## DATABASE ######## --------------------------------------------------
+#### NBA DATABASE -----------------------------------------------------------------
 
 library(tidyverse)
 library(janitor)
@@ -10,359 +10,13 @@ library(DBI)
 
 Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
 
-# team_shots missing: 21201214_1610612754 & 21201214_1610612738
-team_logs <- game_logs(seasons = c(2010:2023), result_types = "team")
-
-games <- team_logs %>%
-    mutate(slugTeamHome = ifelse(locationGame == "H", slugTeam, slugOpponent),
-           slugTeamAway = ifelse(locationGame == "A", slugTeam, slugOpponent)) %>%
-    distinct(idGame, slugTeamHome, slugTeamAway)
-
-# games <- games[1:1230,]
-
-#### Database Builder ----
+#### load database ----
 NBAdb <- dbConnect(SQLite(), "../nba_sql_db/nba_db")
 
-## game_logs_team & game_logs_player & player_dictionary ----
-game_logs(seasons = c(2024), result_types = c("team","players"))
 
-game_logs_team_db <- tbl(dbConnect(SQLite(),
-                                   "../nba_sql_db/nba_db"),"game_logs_team") %>%
-    collect() %>% 
-    mutate(dateGame = as_date(dateGame, origin ="1970-01-01"))
-
-game_logs_player_db <- tbl(dbConnect(SQLite(),
-                                     "../nba_sql_db/nba_db"),"game_logs_player") %>%
-    collect() %>% 
-    mutate(dateGame = as_date(dateGame, origin ="1970-01-01"))
-
-game_logs_team <- dataGameLogsTeam %>% filter(!idGame %in% game_logs_team_db$idGame)
-
-game_logs_player <- dataGameLogsPlayer %>% filter(!idGame %in% game_logs_player_db$idGame)
-
-
-## team_shots ----
-team_shots_db <- tbl(dbConnect(SQLite(),
-                               "../nba_sql_db/nba_db"),"team_shots") %>% collect()
-
-team_shots_new <- teams_shots(team_ids = unique(team_logs$idTeam),
-                              seasons = 2024,
-                              season_types = "Regular Season",
-                              all_active_teams = T)
-
-team_shots <- team_shots_new %>% filter(!idGame %in% team_shots_db$idGame)
-
-
-## pbp_nba ----
-pbp_db <- tbl(dbConnect(SQLite(),
-                        "../nba_sql_db/nba_db"),"pbp_nba") %>% collect()
-
-games_pbp <- games %>% filter(!idGame %in% pbp_db$idGame)
-
-pbp_new <- play_by_play_v2(game_ids = unique(games_pbp$idGame))
-
-pbp_nba <- pbp_new %>% filter(!idGame %in% pbp_db$idGame)
-
-
-## player_profiles ----
-players <- player_profiles(player_ids = unique(TeamShots_db$idPlayer))
-
-
-## box scores team & box_scores_player ----
-#### scrape all team stats ----
-
-# Function to generate headers
-generate_headers <- function() {
-    headers <- c(
-        `Sec-Fetch-Site` = "same-site",
-        `Accept` = "*/*",
-        `Origin` = "https://www.nba.com",
-        `Sec-Fetch-Dest` = "empty",
-        `Accept-Language` = "en-US,en;q=0.9",
-        `Sec-Fetch-Mode` = "cors",
-        `Host` = "stats.nba.com",
-        `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-        `Referer` = "https://www.nba.com/",
-        `Accept-Encoding` = "gzip, deflate, br",
-        `Connection` = "keep-alive"
-    )
-    return(headers)
-}
-
-# Function to generate parameters
-generate_parameters <- function(year, measure_type) {
-    year <- (year - 1)
-    season <- sprintf("%d-%02d", year, (year + 1) %% 100)
-    params <- list(
-        `DateFrom` = "",
-        `DateTo` = "",
-        `GameSegment` = "",
-        `ISTRound` = "",
-        `LastNGames` = "0",
-        `LeagueID` = "00",
-        `Location` = "",
-        `MeasureType` = measure_type,
-        `Month` = "0",
-        `OpponentTeamID` = "0",
-        `Outcome` = "",
-        `PORound` = "0",
-        `PaceAdjust` = "N",
-        `PerMode` = "Totals",
-        `Period` = "0",
-        `PlusMinus` = "N",
-        `Rank` = "N",
-        `Season` = season,
-        `SeasonSegment` = "",
-        `SeasonType` = "Regular Season",
-        `ShotClockRange` = "",
-        `VsConference` = "",
-        `VsDivision` = ""
-    )
-    return(params)
-}
-
-# Function to scraped data
-scrape_nba_team_stats <- function(seasons) {
-    headers <- generate_headers()
-    all_data_list <- list()
-    
-    # Define available measure types
-    available_measure_types <- c("Base", "Advanced", "Four Factors", "Misc", "Scoring")
-    
-    for (measure_type in available_measure_types) {
-        all_data <- data.frame()
-        
-        for (year in seasons) {
-            params <- generate_parameters(year, measure_type)
-            
-            res <- httr::GET(url = "https://stats.nba.com/stats/teamgamelogs",
-                             httr::add_headers(.headers = headers), query = params)
-            data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
-            column_names <- data$headers %>% as.character()
-            dt <- rbindlist(data$rowSet) %>% setnames(column_names)
-            
-            all_data <- bind_rows(all_data, dt)
-            
-            print(paste0(params$Season, " ", params$MeasureType))
-        }
-        
-        all_data_list[[measure_type]] <- all_data
-    }
-    
-    # Data transformation code
-    cleaned_team_list <- lapply(all_data_list, function(df) {
-        df <- clean_names(df) %>%
-            select(-starts_with(c("e_")), -ends_with(c("_rank","_flag"))) %>%
-            return(df)
-    })
-    
-    combined_df <- cleaned_team_list[[1]]
-    combined_df <- combined_df %>%
-        rename_with(~paste0("base_", .), -c(season_year:min))
-    
-    for (i in 2:length(cleaned_team_list)) {
-        df_to_join <- cleaned_team_list[[i]]
-        existing_cols <- names(df_to_join %>% select(season_year:min))
-        existing_cols <- setdiff(existing_cols, c("game_id", "team_name"))
-        df_to_join <- df_to_join %>% select(-any_of(existing_cols))
-        df_to_join <- df_to_join %>% rename_with(~paste0(names(cleaned_team_list)[[i]],"_", .),
-                                                 -c(game_id, team_name)) %>% clean_names()
-        combined_df <- left_join(combined_df, df_to_join,
-                                 by = c("game_id", "team_name"))
-    }
-    
-    team_all_stats <- combined_df %>%
-        arrange(game_date, game_id) %>%
-        mutate(location = if_else(grepl("@", matchup) == T, "away", "home"),
-               game_date = as_date(game_date),
-               season_year = as.numeric(substr(season_year, 1, 4)) + 1) %>%
-        select(season_year:matchup, location, wl:ncol(.))
-    
-    team_games <- team_all_stats %>%
-        distinct(season_year, game_id, game_date, team_id, team_name) %>%
-        group_by(season_year, team_id) %>%
-        mutate(
-            game_count_season = 1:n(),
-            days_rest_team = ifelse(game_count_season > 1,
-                                    (game_date - lag(game_date) - 1),
-                                    120),
-            days_next_game_team =
-                ifelse(game_count_season < 82,
-                       ((
-                           lead(game_date) - game_date
-                       ) - 1),
-                       120),
-            days_next_game_team = days_next_game_team %>% as.numeric(),
-            days_rest_team = days_rest_team %>% as.numeric(),
-            is_b2b = if_else(days_next_game_team == 0 |
-                                 days_rest_team == 0, TRUE, FALSE),
-            is_b2b_first = if_else(lead(days_next_game_team) == 0, TRUE, FALSE),
-            is_b2b_second = if_else(lag(days_next_game_team) == 0, TRUE, FALSE)
-        ) %>%
-        ungroup() %>%
-        mutate_if(is.logical, ~ ifelse(is.na(.), FALSE, .)) %>%
-        select(game_id, team_name,
-               is_b2b_first, is_b2b_second, game_count_season)
-    
-    nba_final <- team_all_stats %>%
-        left_join(team_games, by = c("game_id", "team_name"))
-    
-    return(nba_final)
-}
-
-df <- scrape_nba_team_stats(seasons = 2024)
-
-
-#### scrape all player stats ----
-
-# Function to generate headers
-generate_headers <- function() {
-    headers <- c(
-        `Sec-Fetch-Site` = "same-site",
-        `Accept` = "*/*",
-        `Origin` = "https://www.nba.com",
-        `Sec-Fetch-Dest` = "empty",
-        `Accept-Language` = "en-US,en;q=0.9",
-        `Sec-Fetch-Mode` = "cors",
-        `Host` = "stats.nba.com",
-        `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-        `Referer` = "https://www.nba.com/",
-        `Accept-Encoding` = "gzip, deflate, br",
-        `Connection` = "keep-alive"
-    )
-    return(headers)
-}
-
-# Function to generate parameters
-generate_parameters <- function(year, measure_type) {
-    year <- (year - 1)
-    season <- sprintf("%d-%02d", year, (year + 1) %% 100)
-    params <- list(
-        `DateFrom` = "",
-        `DateTo` = "",
-        `GameSegment` = "",
-        `ISTRound` = "",
-        `LastNGames` = "0",
-        `LeagueID` = "00",
-        `Location` = "",
-        `MeasureType` = measure_type, # "Base" "Advanced" "Usage" "Misc" "Scoring"
-        `Month` = "0",
-        `OpponentTeamID` = "0",
-        `Outcome` = "",
-        `PORound` = "0",
-        `PaceAdjust` = "N",
-        `PerMode` = "Totals",
-        `Period` = "0",
-        `PlusMinus` = "N",
-        `Rank` = "N",
-        `Season` = season,
-        `SeasonSegment` = "",
-        `SeasonType` = "Regular Season",
-        `ShotClockRange` = "",
-        `VsConference` = "",
-        `VsDivision` = ""
-    )
-    return(params)
-}
-
-# Function to scraped data
-scrape_nba_player_stats <- function(seasons) {
-    headers <- generate_headers()
-    all_data_list <- list()
-    
-    # Define available measure types
-    available_measure_types <- c("Base", "Advanced", "Usage", "Misc", "Scoring")
-    
-    for (measure_type in available_measure_types) {
-        all_data <- data.frame()
-        
-        for (year in seasons) {
-            params <- generate_parameters(year, measure_type)
-            
-            res <- httr::GET(url = "https://stats.nba.com/stats/playergamelogs",
-                             httr::add_headers(.headers = headers), query = params)
-            data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
-            column_names <- data$headers %>% as.character()
-            dt <- rbindlist(data$rowSet) %>% setnames(column_names)
-            
-            all_data <- bind_rows(all_data, dt)
-            
-            print(paste0(params$Season, " ", params$MeasureType))
-        }
-        
-        all_data_list[[measure_type]] <- all_data
-    }
-    
-    # Data transformation code
-    cleaned_team_list <- lapply(all_data_list, function(df) {
-        df <- clean_names(df) %>%
-            select(-starts_with(c("e_", "sp_")),
-                   -ends_with(c("_rank","_flag")),
-                   -contains("fantasy")) %>%
-            return(df)
-    })
-    
-    combined_df <- cleaned_team_list[[1]]
-    combined_df <- combined_df %>%
-        rename_with(~paste0("base_", .), -c(season_year:min))
-    
-    for (i in 2:length(cleaned_team_list)) {
-        df_to_join <- cleaned_team_list[[i]]
-        existing_cols <- names(df_to_join %>% select(season_year:min))
-        existing_cols <- setdiff(existing_cols, c("game_id", "player_name"))
-        df_to_join <- df_to_join %>% select(-any_of(existing_cols))
-        df_to_join <- df_to_join %>% rename_with(~paste0(names(cleaned_team_list)[[i]],"_", .),
-                                                 -c(game_id, player_name)) %>% clean_names()
-        combined_df <- left_join(combined_df, df_to_join,
-                                 by = c("game_id", "player_name"))
-    }
-    
-    player_all_stats <- combined_df %>%
-        arrange(game_date, game_id) %>%
-        mutate(location = if_else(grepl("@", matchup) == T, "away", "home"),
-               game_date = as_date(game_date),
-               season_year = as.numeric(substr(season_year, 1, 4)) + 1) %>%
-        select(season_year:matchup, location, wl:ncol(.))
-    
-    player_games <- player_all_stats %>%
-        distinct(season_year, game_id, game_date, player_id, player_name) %>%
-        group_by(season_year, player_id) %>%
-        mutate(
-            game_count_season = 1:n(),
-            days_rest_team = ifelse(game_count_season > 1,
-                                    (game_date - lag(game_date) - 1),
-                                    120),
-            days_next_game_team =
-                ifelse(game_count_season < 82,
-                       ((
-                           lead(game_date) - game_date
-                       ) - 1),
-                       120),
-            days_next_game_team = days_next_game_team %>% as.numeric(),
-            days_rest_team = days_rest_team %>% as.numeric(),
-            is_b2b = if_else(days_next_game_team == 0 |
-                                 days_rest_team == 0, TRUE, FALSE),
-            is_b2b_first = if_else(lead(days_next_game_team) == 0, TRUE, FALSE),
-            is_b2b_second = if_else(lag(days_next_game_team) == 0, TRUE, FALSE)
-        ) %>%
-        ungroup() %>%
-        mutate_if(is.logical, ~ ifelse(is.na(.), FALSE, .)) %>%
-        select(game_id, player_name,
-               is_b2b_first, is_b2b_second, game_count_season)
-    
-    nba_final <- player_all_stats %>%
-        left_join(player_games, by = c("game_id", "player_name")) %>%
-        arrange(game_id, location)
-    
-    return(nba_final)
-}
-
-df <- scrape_nba_player_stats(seasons = 2024)
-
+#### MAMBA DATABASE ####
 
 #### nba schedule scraper function ----
-
-# Create a function to scrape NBA schedule
 scrape_nba_schedule <- function(url, headers) {
     # Send a GET request to the specified URL with the given headers
     res <- httr::GET(url = url, httr::add_headers(.headers = headers))
@@ -505,8 +159,6 @@ nba_schedule <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "nba_schedule_c
 
 
 #### scrape stats for mamba model ----
-
-# Function to generate headers
 generate_headers <- function() {
     headers <- c(
         `Sec-Fetch-Site` = "same-site",
@@ -524,7 +176,6 @@ generate_headers <- function() {
     return(headers)
 }
 
-# Function to generate parameters
 generate_parameters <- function(year, measure_type) {
     year <- (year - 1)
     season <- sprintf("%d-%02d", year, (year + 1) %% 100)
@@ -556,7 +207,6 @@ generate_parameters <- function(year, measure_type) {
     return(params)
 }
 
-# Function to scraped data
 mamba_nba <- function(seasons) {
     headers <- generate_headers()
     all_data_list <- list()
@@ -774,7 +424,6 @@ df_check <- mamba %>%
 
 
 #### NBA odds scraper ----
-# build a bridge
 generate_headers <- function() {
     headers <- c(
         `Sec-Fetch-Site` = "same-site",
@@ -983,7 +632,6 @@ lookup_table <- data.frame(
                    218.5, 216.5, 210.5)
 )
 
-
 new_odds <- odds_db_missing %>%
     left_join(lookup_table, by = "game_id", suffix = c("", "_lookup")) %>%
     mutate(
@@ -1012,6 +660,349 @@ odds_db <- new_odds %>%
 df_check <- df %>%
     group_by(season_year) %>%
     tally()
+
+
+
+#### NBA STATS DATABASE ####
+
+# team_shots missing: 21201214_1610612754 & 21201214_1610612738
+team_logs <- game_logs(seasons = c(2010:2023), result_types = "team")
+
+games <- team_logs %>%
+    mutate(slugTeamHome = ifelse(locationGame == "H", slugTeam, slugOpponent),
+           slugTeamAway = ifelse(locationGame == "A", slugTeam, slugOpponent)) %>%
+    distinct(idGame, slugTeamHome, slugTeamAway)
+
+# games <- games[1:1230,]
+
+
+## game_logs_team & game_logs_player & player_dictionary ----
+game_logs(seasons = c(2024), result_types = c("team","players"))
+
+game_logs_team_db <- tbl(dbConnect(SQLite(),
+                                   "../nba_sql_db/nba_db"),"game_logs_team") %>%
+    collect() %>% 
+    mutate(dateGame = as_date(dateGame, origin ="1970-01-01"))
+
+game_logs_player_db <- tbl(dbConnect(SQLite(),
+                                     "../nba_sql_db/nba_db"),"game_logs_player") %>%
+    collect() %>% 
+    mutate(dateGame = as_date(dateGame, origin ="1970-01-01"))
+
+game_logs_team <- dataGameLogsTeam %>% filter(!idGame %in% game_logs_team_db$idGame)
+
+game_logs_player <- dataGameLogsPlayer %>% filter(!idGame %in% game_logs_player_db$idGame)
+
+
+## team_shots ----
+team_shots_db <- tbl(dbConnect(SQLite(),
+                               "../nba_sql_db/nba_db"),"team_shots") %>% collect()
+
+team_shots_new <- teams_shots(team_ids = unique(team_logs$idTeam),
+                              seasons = 2024,
+                              season_types = "Regular Season",
+                              all_active_teams = T)
+
+team_shots <- team_shots_new %>% filter(!idGame %in% team_shots_db$idGame)
+
+
+## box scores team & box_scores_player ----
+
+#### scrape all team stats ----
+generate_headers <- function() {
+    headers <- c(
+        `Sec-Fetch-Site` = "same-site",
+        `Accept` = "*/*",
+        `Origin` = "https://www.nba.com",
+        `Sec-Fetch-Dest` = "empty",
+        `Accept-Language` = "en-US,en;q=0.9",
+        `Sec-Fetch-Mode` = "cors",
+        `Host` = "stats.nba.com",
+        `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+        `Referer` = "https://www.nba.com/",
+        `Accept-Encoding` = "gzip, deflate, br",
+        `Connection` = "keep-alive"
+    )
+    return(headers)
+}
+
+generate_parameters <- function(year, measure_type) {
+    year <- (year - 1)
+    season <- sprintf("%d-%02d", year, (year + 1) %% 100)
+    params <- list(
+        `DateFrom` = "",
+        `DateTo` = "",
+        `GameSegment` = "",
+        `ISTRound` = "",
+        `LastNGames` = "0",
+        `LeagueID` = "00",
+        `Location` = "",
+        `MeasureType` = measure_type,
+        `Month` = "0",
+        `OpponentTeamID` = "0",
+        `Outcome` = "",
+        `PORound` = "0",
+        `PaceAdjust` = "N",
+        `PerMode` = "Totals",
+        `Period` = "0",
+        `PlusMinus` = "N",
+        `Rank` = "N",
+        `Season` = season,
+        `SeasonSegment` = "",
+        `SeasonType` = "Regular Season",
+        `ShotClockRange` = "",
+        `VsConference` = "",
+        `VsDivision` = ""
+    )
+    return(params)
+}
+
+scrape_nba_team_stats <- function(seasons) {
+    headers <- generate_headers()
+    all_data_list <- list()
+    
+    # Define available measure types
+    available_measure_types <- c("Base", "Advanced", "Four Factors", "Misc", "Scoring")
+    
+    for (measure_type in available_measure_types) {
+        all_data <- data.frame()
+        
+        for (year in seasons) {
+            params <- generate_parameters(year, measure_type)
+            
+            res <- httr::GET(url = "https://stats.nba.com/stats/teamgamelogs",
+                             httr::add_headers(.headers = headers), query = params)
+            data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
+            column_names <- data$headers %>% as.character()
+            dt <- rbindlist(data$rowSet) %>% setnames(column_names)
+            
+            all_data <- bind_rows(all_data, dt)
+            
+            print(paste0(params$Season, " ", params$MeasureType))
+        }
+        
+        all_data_list[[measure_type]] <- all_data
+    }
+    
+    # Data transformation code
+    cleaned_team_list <- lapply(all_data_list, function(df) {
+        df <- clean_names(df) %>%
+            select(-starts_with(c("e_")), -ends_with(c("_rank","_flag"))) %>%
+            return(df)
+    })
+    
+    combined_df <- cleaned_team_list[[1]]
+    combined_df <- combined_df %>%
+        rename_with(~paste0("base_", .), -c(season_year:min))
+    
+    for (i in 2:length(cleaned_team_list)) {
+        df_to_join <- cleaned_team_list[[i]]
+        existing_cols <- names(df_to_join %>% select(season_year:min))
+        existing_cols <- setdiff(existing_cols, c("game_id", "team_name"))
+        df_to_join <- df_to_join %>% select(-any_of(existing_cols))
+        df_to_join <- df_to_join %>% rename_with(~paste0(names(cleaned_team_list)[[i]],"_", .),
+                                                 -c(game_id, team_name)) %>% clean_names()
+        combined_df <- left_join(combined_df, df_to_join,
+                                 by = c("game_id", "team_name"))
+    }
+    
+    team_all_stats <- combined_df %>%
+        arrange(game_date, game_id) %>%
+        mutate(location = if_else(grepl("@", matchup) == T, "away", "home"),
+               game_date = as_date(game_date),
+               season_year = as.numeric(substr(season_year, 1, 4)) + 1) %>%
+        select(season_year:matchup, location, wl:ncol(.))
+    
+    team_games <- team_all_stats %>%
+        distinct(season_year, game_id, game_date, team_id, team_name) %>%
+        group_by(season_year, team_id) %>%
+        mutate(
+            game_count_season = 1:n(),
+            days_rest_team = ifelse(game_count_season > 1,
+                                    (game_date - lag(game_date) - 1),
+                                    120),
+            days_next_game_team =
+                ifelse(game_count_season < 82,
+                       ((
+                           lead(game_date) - game_date
+                       ) - 1),
+                       120),
+            days_next_game_team = days_next_game_team %>% as.numeric(),
+            days_rest_team = days_rest_team %>% as.numeric(),
+            is_b2b = if_else(days_next_game_team == 0 |
+                                 days_rest_team == 0, TRUE, FALSE),
+            is_b2b_first = if_else(lead(days_next_game_team) == 0, TRUE, FALSE),
+            is_b2b_second = if_else(lag(days_next_game_team) == 0, TRUE, FALSE)
+        ) %>%
+        ungroup() %>%
+        mutate_if(is.logical, ~ ifelse(is.na(.), FALSE, .)) %>%
+        select(game_id, team_name,
+               is_b2b_first, is_b2b_second, game_count_season)
+    
+    nba_final <- team_all_stats %>%
+        left_join(team_games, by = c("game_id", "team_name"))
+    
+    return(nba_final)
+}
+
+df <- scrape_nba_team_stats(seasons = 2024)
+
+#### scrape all player stats ----
+generate_headers <- function() {
+    headers <- c(
+        `Sec-Fetch-Site` = "same-site",
+        `Accept` = "*/*",
+        `Origin` = "https://www.nba.com",
+        `Sec-Fetch-Dest` = "empty",
+        `Accept-Language` = "en-US,en;q=0.9",
+        `Sec-Fetch-Mode` = "cors",
+        `Host` = "stats.nba.com",
+        `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+        `Referer` = "https://www.nba.com/",
+        `Accept-Encoding` = "gzip, deflate, br",
+        `Connection` = "keep-alive"
+    )
+    return(headers)
+}
+
+generate_parameters <- function(year, measure_type) {
+    year <- (year - 1)
+    season <- sprintf("%d-%02d", year, (year + 1) %% 100)
+    params <- list(
+        `DateFrom` = "",
+        `DateTo` = "",
+        `GameSegment` = "",
+        `ISTRound` = "",
+        `LastNGames` = "0",
+        `LeagueID` = "00",
+        `Location` = "",
+        `MeasureType` = measure_type, # "Base" "Advanced" "Usage" "Misc" "Scoring"
+        `Month` = "0",
+        `OpponentTeamID` = "0",
+        `Outcome` = "",
+        `PORound` = "0",
+        `PaceAdjust` = "N",
+        `PerMode` = "Totals",
+        `Period` = "0",
+        `PlusMinus` = "N",
+        `Rank` = "N",
+        `Season` = season,
+        `SeasonSegment` = "",
+        `SeasonType` = "Regular Season",
+        `ShotClockRange` = "",
+        `VsConference` = "",
+        `VsDivision` = ""
+    )
+    return(params)
+}
+
+scrape_nba_player_stats <- function(seasons) {
+    headers <- generate_headers()
+    all_data_list <- list()
+    
+    # Define available measure types
+    available_measure_types <- c("Base", "Advanced", "Usage", "Misc", "Scoring")
+    
+    for (measure_type in available_measure_types) {
+        all_data <- data.frame()
+        
+        for (year in seasons) {
+            params <- generate_parameters(year, measure_type)
+            
+            res <- httr::GET(url = "https://stats.nba.com/stats/playergamelogs",
+                             httr::add_headers(.headers = headers), query = params)
+            data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
+            column_names <- data$headers %>% as.character()
+            dt <- rbindlist(data$rowSet) %>% setnames(column_names)
+            
+            all_data <- bind_rows(all_data, dt)
+            
+            print(paste0(params$Season, " ", params$MeasureType))
+        }
+        
+        all_data_list[[measure_type]] <- all_data
+    }
+    
+    # Data transformation code
+    cleaned_team_list <- lapply(all_data_list, function(df) {
+        df <- clean_names(df) %>%
+            select(-starts_with(c("e_", "sp_")),
+                   -ends_with(c("_rank","_flag")),
+                   -contains("fantasy")) %>%
+            return(df)
+    })
+    
+    combined_df <- cleaned_team_list[[1]]
+    combined_df <- combined_df %>%
+        rename_with(~paste0("base_", .), -c(season_year:min))
+    
+    for (i in 2:length(cleaned_team_list)) {
+        df_to_join <- cleaned_team_list[[i]]
+        existing_cols <- names(df_to_join %>% select(season_year:min))
+        existing_cols <- setdiff(existing_cols, c("game_id", "player_name"))
+        df_to_join <- df_to_join %>% select(-any_of(existing_cols))
+        df_to_join <- df_to_join %>% rename_with(~paste0(names(cleaned_team_list)[[i]],"_", .),
+                                                 -c(game_id, player_name)) %>% clean_names()
+        combined_df <- left_join(combined_df, df_to_join,
+                                 by = c("game_id", "player_name"))
+    }
+    
+    player_all_stats <- combined_df %>%
+        arrange(game_date, game_id) %>%
+        mutate(location = if_else(grepl("@", matchup) == T, "away", "home"),
+               game_date = as_date(game_date),
+               season_year = as.numeric(substr(season_year, 1, 4)) + 1) %>%
+        select(season_year:matchup, location, wl:ncol(.))
+    
+    player_games <- player_all_stats %>%
+        distinct(season_year, game_id, game_date, player_id, player_name) %>%
+        group_by(season_year, player_id) %>%
+        mutate(
+            game_count_season = 1:n(),
+            days_rest_team = ifelse(game_count_season > 1,
+                                    (game_date - lag(game_date) - 1),
+                                    120),
+            days_next_game_team =
+                ifelse(game_count_season < 82,
+                       ((
+                           lead(game_date) - game_date
+                       ) - 1),
+                       120),
+            days_next_game_team = days_next_game_team %>% as.numeric(),
+            days_rest_team = days_rest_team %>% as.numeric(),
+            is_b2b = if_else(days_next_game_team == 0 |
+                                 days_rest_team == 0, TRUE, FALSE),
+            is_b2b_first = if_else(lead(days_next_game_team) == 0, TRUE, FALSE),
+            is_b2b_second = if_else(lag(days_next_game_team) == 0, TRUE, FALSE)
+        ) %>%
+        ungroup() %>%
+        mutate_if(is.logical, ~ ifelse(is.na(.), FALSE, .)) %>%
+        select(game_id, player_name,
+               is_b2b_first, is_b2b_second, game_count_season)
+    
+    nba_final <- player_all_stats %>%
+        left_join(player_games, by = c("game_id", "player_name")) %>%
+        arrange(game_id, location)
+    
+    return(nba_final)
+}
+
+df <- scrape_nba_player_stats(seasons = 2024)
+
+
+## pbp_nba ----
+pbp_db <- tbl(dbConnect(SQLite(),
+                        "../nba_sql_db/nba_db"),"pbp_nba") %>% collect()
+
+games_pbp <- games %>% filter(!idGame %in% pbp_db$idGame)
+
+pbp_new <- play_by_play_v2(game_ids = unique(games_pbp$idGame))
+
+pbp_nba <- pbp_new %>% filter(!idGame %in% pbp_db$idGame)
+
+
+## player_profiles ----
+players <- player_profiles(player_ids = unique(TeamShots_db$idPlayer))
 
 
 #### basketball reference ---- re-code team and player stats
