@@ -628,9 +628,41 @@ openxlsx::write.xlsx(dt, file = "./output/isolation_off.xlsx")
 
 
 
+#### Hustle Box Score ----
+headers = c(
+    `Sec-Fetch-Site` = "same-site",
+    `Accept` = "*/*",
+    `Origin` = "https://www.nba.com",
+    `Sec-Fetch-Dest` = "empty",
+    `Accept-Language` = "en-US,en;q=0.9",
+    `Sec-Fetch-Mode` = "cors",
+    `Host` = "stats.nba.com",
+    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+    `Referer` = "https://www.nba.com/",
+    `Accept-Encoding` = "gzip, deflate, br",
+    `Connection` = "keep-alive"
+    )
+ 
+params = list(
+    `GameID` = "0022300345",
+    `LeagueID` = "00",
+    `endPeriod` = "0",
+    `endRange` = "28800",
+    `rangeType` = "0",
+    `startPeriod` = "0",
+    `startRange` = "0"
+    )
 
+res <- httr::GET(url = "https://stats.nba.com/stats/boxscorehustlev2",
+                 httr::add_headers(.headers=headers), query = params)
 
+json <- res$content %>%
+    rawToChar() %>%
+    jsonlite::fromJSON(simplifyVector = T)
 
+column_names <- json$headers %>% as.character() 
+
+dt <- rbindlist(json$rowSet) %>% setnames(column_names)
 
 
 
