@@ -9,6 +9,7 @@ library(RSQLite)
 library(DBI)
 
 Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 2)
+options(scipen = 999999)
 
 #### load database ----
 NBAdb <- dbConnect(SQLite(), "../nba_sql_db/nba_db")
