@@ -675,9 +675,42 @@ dt <- rbindlist(json$rowSet) %>% setnames(column_names)
 
 
 
+# Install and load the necessary packages
+library(tidyverse)
+library(rvest)
+
+# Read the HTML file
+html_content <- readLines("https://www.sportsbookreview.com/betting-odds/nba-basketball/money-line/full-game/?date=2024/01/05", warn = FALSE)
+
+# Parse the HTML content with rvest
+html <- html_content %>% paste(collapse = "\n") %>% read_html()
+
+html_product <- html %>% html_elements("#tbody-nba")
+
+table <- html_product %>% html_element("span")
 
 
 
+
+
+
+
+
+
+
+
+
+library(tidyverse)
+library(httr)
+library(jsonlite)
+
+
+
+res <- httr::GET(url = "https://www.rotowire.com/betting/nba/tables/games-archive.php")
+
+json <- res$content %>%
+    rawToChar() %>%
+    jsonlite::fromJSON(simplifyVector = T)
 
 
 
