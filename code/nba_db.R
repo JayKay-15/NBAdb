@@ -59,7 +59,7 @@ scrape_nba_schedule <- function(url, headers) {
     
     nba_schedule <- rbindlist(schedule_df) %>%
         clean_names() %>%
-        filter(series_text != "Preseason" & team_name != "") %>%
+        filter(!series_text %in% c("Preseason","Championship","All-Star Game") & team_name != "") %>%
         mutate(game_date = as_date(game_date_est),
                team_name = paste0(team_city, " ", team_name)) %>%
         select(game_date, game_id, location, team_name) %>%
@@ -408,10 +408,10 @@ mamba_nba <- function(seasons) {
     return(nba_final)
 }
 
-mamba <- mamba_nba(seasons = 2014:2023)
+mamba <- mamba_nba(seasons = 2024)
 
 NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db")
-DBI::dbWriteTable(NBAdb, "mamba_stats", mamba, overwrite = T)
+DBI::dbWriteTable(NBAdb, "mamba_stats", mamba, append = T)
 DBI::dbDisconnect(NBAdb)
 
 mamba <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "mamba_stats") %>%
