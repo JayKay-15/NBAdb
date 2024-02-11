@@ -666,35 +666,6 @@ df_check <- df %>%
 
 #### NBA STATS DATABASE ####
 
-# team_shots missing: 21201214_1610612754 & 21201214_1610612738
-team_logs <- game_logs(seasons = c(2010:2023), result_types = "team")
-
-games <- team_logs %>%
-    mutate(slugTeamHome = ifelse(locationGame == "H", slugTeam, slugOpponent),
-           slugTeamAway = ifelse(locationGame == "A", slugTeam, slugOpponent)) %>%
-    distinct(idGame, slugTeamHome, slugTeamAway)
-
-# games <- games[1:1230,]
-
-
-## game_logs_team & game_logs_player & player_dictionary ----
-game_logs(seasons = c(2024), result_types = c("team","players"))
-
-game_logs_team_db <- tbl(dbConnect(SQLite(),
-                                   "../nba_sql_db/nba_db"),"game_logs_team") %>%
-    collect() %>% 
-    mutate(dateGame = as_date(dateGame, origin ="1970-01-01"))
-
-game_logs_player_db <- tbl(dbConnect(SQLite(),
-                                     "../nba_sql_db/nba_db"),"game_logs_player") %>%
-    collect() %>% 
-    mutate(dateGame = as_date(dateGame, origin ="1970-01-01"))
-
-game_logs_team <- dataGameLogsTeam %>% filter(!idGame %in% game_logs_team_db$idGame)
-
-game_logs_player <- dataGameLogsPlayer %>% filter(!idGame %in% game_logs_player_db$idGame)
-
-
 ## team_shots ----
 team_shots_db <- tbl(dbConnect(SQLite(),
                                "../nba_sql_db/nba_db"),"team_shots") %>% collect()
@@ -707,7 +678,7 @@ team_shots_new <- teams_shots(team_ids = unique(team_logs$idTeam),
 team_shots <- team_shots_new %>% filter(!idGame %in% team_shots_db$idGame)
 
 
-## box scores team & box_scores_player ----
+## box scores team & box scores player ----
 
 #### scrape all team stats ----
 generate_headers <- function() {
@@ -846,7 +817,9 @@ scrape_nba_team_stats <- function(seasons) {
     return(nba_final)
 }
 
-df <- scrape_nba_team_stats(seasons = 2024)
+df <- scrape_nba_team_stats(seasons = c(2014:2023))
+
+DBI::dbWriteTable(NBAdb, "box_scores_team", df, overwrite = T)
 
 #### scrape all player stats ----
 generate_headers <- function() {
@@ -988,18 +961,293 @@ scrape_nba_player_stats <- function(seasons) {
     return(nba_final)
 }
 
-df <- scrape_nba_player_stats(seasons = 2024)
+df <- scrape_nba_player_stats(seasons = c(2014:2023))
+
+DBI::dbWriteTable(NBAdb, "box_scores_player", df, overwrite = T)
+
+## play by play & win probability & fanduel ----
+
+#### scrape play by play & win probability ----
+scrape_nba_play_by_play <- function(game_ids) {
+    
+    # loop that pauses 5 minutes between scrapes - 100 games at a time
+    game_ids <- unique(game_ids)
+    sleeper <- 300
+    games_per_batch <- 100
+    game_counter <- 0
+    pbp_df <- data.frame()
+    wp_df <- data.frame()
+    
+    
+    for (game_id in game_ids) {
+        
+        if (game_counter >= games_per_batch) {
+            Sys.sleep(sleeper)
+            game_counter <- 0
+        }
+        
+        game_counter <- game_counter + 1
+        
+        tryCatch({
+            
+            # print(game_id)
+            
+            headers <- c(
+                `Host` = 'stats.nba.com',
+                `User-Agent` = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15',
+                `Accept` = 'application/json, text/plain, */*',
+                `Accept-Language` = 'en-US,en;q=0.5',
+                `Accept-Encoding` = 'gzip, deflate, br',
+                `x-nba-stats-origin` = 'stats',
+                `x-nba-stats-token` = 'true',
+                `Connection` = 'keep-alive',
+                `Referer` = 'https =//stats.nba.com/',
+                `Pragma` = 'no-cache',
+                `Cache-Control` = 'no-cache'
+            )
+            
+            res <- httr::GET(url = paste0("https://stats.nba.com/stats/playbyplayv2?GameID=",game_id,"&StartPeriod=0&EndPeriod=12"),
+                             httr::add_headers(.headers=headers))
+            
+            json <- res$content %>% rawToChar() %>% jsonlite::fromJSON(simplifyVector = T)
+            
+            data <- json$resultSets$rowSet[[1]] %>%
+                data.frame(stringsAsFactors = F) %>%
+                as_tibble()
+            
+            json_names <- json$resultSets$headers[[1]]
+            
+            data <- data %>% set_names(json_names) %>% clean_names()
+            
+            pbp_df <- bind_rows(pbp_df, data)
+            
+            print(paste0("Getting Game ", game_id))
+            
+            
+            
+            headers <- c(
+                `Host` = 'stats.nba.com',
+                `User-Agent` = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15',
+                `Accept` = 'application/json, text/plain, */*',
+                `Accept-Language` = 'en-US,en;q=0.5',
+                `Accept-Encoding` = 'gzip, deflate, br',
+                `x-nba-stats-origin` = 'stats',
+                `x-nba-stats-token` = 'true',
+                `Connection` = 'keep-alive',
+                `Referer` = 'https =//stats.nba.com/',
+                `Pragma` = 'no-cache',
+                `Cache-Control` = 'no-cache'
+            )
+            
+            res <- httr::GET(url = paste0("https://stats.nba.com/stats/winprobabilitypbp?GameID=",game_id,"&StartPeriod=0&EndPeriod=12&StartRange=0&EndRange=12&RangeType=1&Runtype=each%20second"),
+                             httr::add_headers(.headers=headers))
+            
+            json <- res$content %>%
+                rawToChar() %>%
+                jsonlite::fromJSON(simplifyVector = T)
+            
+            data <- json$resultSets$rowSet[[1]] %>%
+                data.frame(stringsAsFactors = F) %>%
+                as_tibble()
+            
+            json_names <- json$resultSets$headers[[1]]
+            
+            df_metadata <- json$resultSets$rowSet[[2]] %>%
+                data.frame(stringsAsFactors = F) %>%
+                as_tibble()
+            
+            names_md <- json$resultSets$headers[[2]]
+            
+            df_metadata <- df_metadata %>%
+                set_names(names_md) %>%
+                clean_names() %>%
+                mutate(game_date = game_date %>% lubridate::mdy()) %>%
+                select(-dplyr::matches("pts"))
+            
+            names_md <- names(df_metadata)
+            
+            data <- data %>%
+                set_names(json_names) %>%
+                clean_names() %>%
+                left_join(df_metadata, by = "game_id") %>%
+                select(one_of(names_md), everything()) %>%
+                suppressMessages()
+            
+            wp_df <- bind_rows(wp_df, data)
+            
+            print(paste0("Getting Game ", game_id))
+            
+        }, error = function(e) {
+            # Print an error message
+            cat("Error in processing game ", game_id, ": ",
+                conditionMessage(e), "\n")
+            
+            return(NULL) # return NULL to indicate that there was an error
+        })
+        
+    }
+    
+    pbp_df <<- pbp_df
+    wp_df <<- wp_df
+    
+}
+
+scrape_nba_play_by_play(game_ids)
+
+### scrape play by play ----
+scrape_nba_play_by_play <- function(game_ids) {
+    
+    pbp_df <- data.frame()
+    
+    for (game_id in game_ids) {
+        
+        headers <- c(
+            `Host` = 'stats.nba.com',
+            `User-Agent` = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15',
+            `Accept` = 'application/json, text/plain, */*',
+            `Accept-Language` = 'en-US,en;q=0.5',
+            `Accept-Encoding` = 'gzip, deflate, br',
+            `x-nba-stats-origin` = 'stats',
+            `x-nba-stats-token` = 'true',
+            `Connection` = 'keep-alive',
+            `Referer` = 'https =//stats.nba.com/',
+            `Pragma` = 'no-cache',
+            `Cache-Control` = 'no-cache'
+        )
+        
+        res <- httr::GET(url = paste0("https://stats.nba.com/stats/playbyplayv2?GameID=",game_id,"&StartPeriod=0&EndPeriod=12"),
+                         httr::add_headers(.headers=headers))
+        
+        json <- res$content %>% rawToChar() %>% jsonlite::fromJSON(simplifyVector = T)
+        
+        data <- json$resultSets$rowSet[[1]] %>%
+            data.frame(stringsAsFactors = F) %>%
+            as_tibble()
+        
+        json_names <- json$resultSets$headers[[1]]
+        
+        data <- data %>% set_names(json_names) %>% clean_names()
+        
+        pbp_df <- bind_rows(pbp_df, data)
+        
+        print(paste0("Getting Game ", game_id))
+        
+    }
+    
+    return(pbp_df)
+}
+
+pbp <- scrape_nba_play_by_play(game_ids)
+
+#### scrape win probability ----
+scrape_nba_win_probability <- function(game_ids) {
+    
+    wp_df <- data.frame()
+    
+    for (game_id in game_ids) {
+        
+        headers <- c(
+            `Host` = 'stats.nba.com',
+            `User-Agent` = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15',
+            `Accept` = 'application/json, text/plain, */*',
+            `Accept-Language` = 'en-US,en;q=0.5',
+            `Accept-Encoding` = 'gzip, deflate, br',
+            `x-nba-stats-origin` = 'stats',
+            `x-nba-stats-token` = 'true',
+            `Connection` = 'keep-alive',
+            `Referer` = 'https =//stats.nba.com/',
+            `Pragma` = 'no-cache',
+            `Cache-Control` = 'no-cache'
+        )
+        
+        res <- httr::GET(url = paste0("https://stats.nba.com/stats/winprobabilitypbp?GameID=",game_id,"&StartPeriod=0&EndPeriod=12&StartRange=0&EndRange=12&RangeType=1&Runtype=each%20second"),
+                         httr::add_headers(.headers=headers))
+        
+        json <- res$content %>%
+            rawToChar() %>%
+            jsonlite::fromJSON(simplifyVector = T)
+        
+        data <- json$resultSets$rowSet[[1]] %>%
+            data.frame(stringsAsFactors = F) %>%
+            as_tibble()
+        
+        json_names <- json$resultSets$headers[[1]]
+        
+        df_metadata <- json$resultSets$rowSet[[2]] %>%
+            data.frame(stringsAsFactors = F) %>%
+            as_tibble()
+        
+        names_md <- json$resultSets$headers[[2]]
+        
+        df_metadata <- df_metadata %>%
+            set_names(names_md) %>%
+            clean_names() %>%
+            mutate(game_date = game_date %>% lubridate::mdy()) %>%
+            select(-dplyr::matches("pts"))
+        
+        names_md <- names(df_metadata)
+        
+        data <- data %>%
+            set_names(json_names) %>%
+            clean_names() %>%
+            left_join(df_metadata, by = "game_id") %>%
+            select(one_of(names_md), everything()) %>%
+            suppressMessages()
+        
+        wp_df <- bind_rows(wp_df, data)
+        
+        print(paste0("Getting Game ", game_id))
+        
+    }
+    
+    return(wp_df)
+    
+}
+
+win_prob <- scrape_nba_win_probability(game_ids)
+
+#### scrape fanduel ----
+scrape_fanduel <- function(game_ids) {
+    
+    fd_df <- data.frame()
+    
+    for (game_id in game_ids) {
+        
+        headers <- c(
+            `Host` = 'stats.nba.com',
+            `User-Agent` = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15',
+            `Accept` = 'application/json, text/plain, */*',
+            `Accept-Language` = 'en-US,en;q=0.5',
+            `Accept-Encoding` = 'gzip, deflate, br',
+            `x-nba-stats-origin` = 'stats',
+            `x-nba-stats-token` = 'true',
+            `Connection` = 'keep-alive',
+            `Referer` = 'https =//stats.nba.com/',
+            `Pragma` = 'no-cache',
+            `Cache-Control` = 'no-cache'
+        )
+        
+        res <- httr::GET(paste0(url = "https://stats.nba.com/stats/infographicfanduelplayer/?gameId=", game_id, "0022200334"), httr::add_headers(.headers=headers))
+        
+        json <- res$content %>% rawToChar() %>% jsonlite::fromJSON(simplifyVector = T)
+        
+        data <- json$resultSets$rowSet[[1]] %>%
+            data.frame(stringsAsFactors = F) %>%
+            as_tibble()
+        
+        json_names <- json$resultSets$headers[[1]]
+        
+        data <- data %>% set_names(json_names) %>% clean_names() 
+        
+    }
+
+}
+
+fanduel <- scrape_fanduel(game_ids)
 
 
-## pbp_nba ----
-pbp_db <- tbl(dbConnect(SQLite(),
-                        "../nba_sql_db/nba_db"),"pbp_nba") %>% collect()
 
-games_pbp <- games %>% filter(!idGame %in% pbp_db$idGame)
 
-pbp_new <- play_by_play_v2(game_ids = unique(games_pbp$idGame))
-
-pbp_nba <- pbp_new %>% filter(!idGame %in% pbp_db$idGame)
 
 
 ## player_profiles ----
@@ -1078,25 +1326,20 @@ NBAdb <- dbConnect(SQLite(), "../nba_sql_db/nba_db")
 
 dbListTables(NBAdb)
 
-# DBI::dbWriteTable(NBAdb, "game_logs_team", game_logs_team, append = T)              # automated --- 2023
-# DBI::dbWriteTable(NBAdb, "game_logs_player", game_logs_player, append = T)          # automated --- 2023
-# DBI::dbWriteTable(NBAdb, "team_shots", team_shots, append = T)                      # automated --- 2023
-# DBI::dbWriteTable(NBAdb, "pbp_nba", pbp_nba, append = T)                            # automated --- 2023
-# DBI::dbWriteTable(NBAdb, "box_scores_team", box_scores_team, append = T)            # automated --- 10/24
-# DBI::dbWriteTable(NBAdb, "box_scores_player", box_scores_player, append = T)        # automated --- 10/24
+#### MAMBA ----
+# DBI::dbWriteTable(NBAdb, "nba_schedule_current", nba_schedule, overwrite = T)       # automated --- 2024
+# DBI::dbWriteTable(NBAdb, "mamba_stats", mamba, append = T)                          # automated --- 2024
+# DBI::dbWriteTable(NBAdb, "nba_odds", odds_db, append = T)                           # automated --- 2023
 
-# DBI::dbWriteTable(NBAdb, "game_logs_adj", nba_final, append = T)                    # nba_db_refresh
-# DBI::dbWriteTable(NBAdb, "box_scores_gbg", box_scores_gbg, append = T)              # nba_db_refresh
-# DBI::dbWriteTable(NBAdb, "nba_league_avg", nba_league_avg, append = T)              # nba_db_refresh
 
-# DBI::dbWriteTable(NBAdb, "mamba_stats", mamba, overwrite = T)                       # model stats
-# DBI::dbWriteTable(NBAdb, "nba_odds", odds_db, append = T)                           # model odds
-# DBI::dbWriteTable(NBAdb, "nba_schedule_current", nba_schedule, overwrite = T)       # schedule current year
+#### Team & Player Stats ----
+# DBI::dbWriteTable(NBAdb, "box_scores_team", box_scores_team, append = T)            # automated --- 2014-2023
+# DBI::dbWriteTable(NBAdb, "box_scores_player", box_scores_player, append = T)        # automated --- 2014-2023
 
-# DBI::dbWriteTable(NBAdb, "results_book", df)                                        # model ---
-# DBI::dbWriteTable(NBAdb, "plays", df)                                               # model ---
-# DBI::dbWriteTable(NBAdb, "odds", df)                                                # model ---
-# DBI::dbWriteTable(NBAdb, "all_shots", df)                                           # model ---
+
+# DBI::dbWriteTable(NBAdb, "team_shots", team_shots, append = T)                      # automated --- redo?
+# DBI::dbWriteTable(NBAdb, "all_shots", df)                                           # model --- good?
+
 
 # DBI::dbWriteTable(NBAdb, "player_dictionary", df_nba_player_dict, overwrite = T)    # automated --- 2023
 # DBI::dbWriteTable(NBAdb, "team_dictionary", team_dict, overwrite = T)               # as needed ---
@@ -1105,7 +1348,7 @@ dbListTables(NBAdb)
 dbDisconnect(NBAdb)
 
 ## query db
-df <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "nba_odds") %>%
+df <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "team_shots") %>%
     collect() %>%
     mutate(game_date = as_date(game_date, origin ="1970-01-01"))
 
