@@ -154,7 +154,8 @@ DBI::dbDisconnect(NBAdb)
 
 # saveRDS(nba_schedule, "./nba_schedule.rds")
 
-nba_schedule <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "nba_schedule_current") %>%
+nba_schedule <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"),
+                    "nba_schedule_current") %>%
     collect() %>%
     mutate(game_date = as_date(game_date, origin ="1970-01-01"))
 
@@ -408,7 +409,7 @@ mamba_nba <- function(seasons) {
     return(nba_final)
 }
 
-mamba <- mamba_nba(seasons = 2024)
+mamba <- mamba_nba(2024)
 
 NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db")
 DBI::dbWriteTable(NBAdb, "mamba_stats", mamba, append = T)
@@ -1227,7 +1228,7 @@ scrape_fanduel <- function(game_ids) {
             `Cache-Control` = 'no-cache'
         )
         
-        res <- httr::GET(paste0(url = "https://stats.nba.com/stats/infographicfanduelplayer/?gameId=", game_id, "0022200334"), httr::add_headers(.headers=headers))
+        res <- httr::GET(paste0(url = "https://stats.nba.com/stats/infographicfanduelplayer/?gameId=", game_id), httr::add_headers(.headers=headers))
         
         json <- res$content %>% rawToChar() %>% jsonlite::fromJSON(simplifyVector = T)
         
@@ -1237,13 +1238,157 @@ scrape_fanduel <- function(game_ids) {
         
         json_names <- json$resultSets$headers[[1]]
         
-        data <- data %>% set_names(json_names) %>% clean_names() 
+        data <- data %>%
+            set_names(json_names) %>%
+            clean_names() %>%
+            mutate(game_id = game_id)
+        
+        fd_df <- bind_rows(fd_df, data)
+        
+        print(paste0("Getting Game ", game_id))
         
     }
-
+    
+    return(fd_df)
+    
 }
 
 fanduel <- scrape_fanduel(game_ids)
+
+
+## shots data ----
+
+generate_headers <- function() {
+    headers = c(
+        `Accept` = '*/*',
+        `Origin` = 'https://www.nba.com',
+        `Accept-Encoding` = 'gzip, deflate, br',
+        `Host` = 'stats.nba.com',
+        `User-Agent` = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15',
+        `Accept-Language` = 'en-US,en;q=0.9',
+        `Referer` = 'https://www.nba.com/',
+        `Connection` = 'keep-alive'
+    )
+    return(headers)
+}
+
+generate_parameters <- function(year, measure_type) {
+    year <- (year - 1)
+    season <- sprintf("%d-%02d", year, (year + 1) %% 100)
+    
+    params = list(
+        `AheadBehind` = '',
+        # `CFID` = '155',
+        # `CFPARAMS` = '2021-22',
+        `ClutchTime` = '',
+        `Conference` = '',
+        `ContextFilter` = '',
+        `ContextMeasure` = 'FGA',
+        `DateFrom` = '',
+        `DateTo` = '',
+        `Division` = '',
+        `EndPeriod` = '10',
+        `EndRange` = '28800',
+        `GROUP_ID` = '',
+        `GameEventID` = '',
+        `GameID` = '',
+        `GameSegment` = '',
+        `GroupID` = '',
+        `GroupMode` = '',
+        `GroupQuantity` = '5',
+        `LastNGames` = '0',
+        `LeagueID` = '00',
+        `Location` = '',
+        `Month` = '0',
+        `OnOff` = '',
+        `OppPlayerID` = '',
+        `OpponentTeamID` = '0',
+        `Outcome` = '',
+        `PORound` = '0',
+        `Period` = '0',
+        `PlayerID` = '0',
+        `PlayerID1` = '',
+        `PlayerID2` = '',
+        `PlayerID3` = '',
+        `PlayerID4` = '',
+        `PlayerID5` = '',
+        `PlayerPosition` = '',
+        `PointDiff` = '',
+        `Position` = '',
+        `RangeType` = '0',
+        `RookieYear` = '',
+        `Season` = season,
+        `SeasonSegment` = '',
+        `SeasonType` = 'Regular Season',
+        `ShotClockRange` = '',
+        `StartPeriod` = '1',
+        `StartRange` = '0',
+        `StarterBench` = '',
+        `TeamID` = '0',
+        `VsConference` = '',
+        `VsDivision` = '',
+        `VsPlayerID1` = '',
+        `VsPlayerID2` = '',
+        `VsPlayerID3` = '',
+        `VsPlayerID4` = '',
+        `VsPlayerID5` = '',
+        `VsTeamID` = ''
+    )
+    return(params)
+}
+
+scrape_nba_shots <- function(seasons) {
+    headers <- generate_headers()
+    
+    shots <- data.frame()
+    league_avg <- data.frame()
+    
+    
+    for (year in seasons) {
+        params <- generate_parameters(year)
+        
+        res <- httr::GET(url = 'https://stats.nba.com/stats/shotchartdetail',
+                         httr::add_headers(.headers=headers), query = params)
+        
+        json <- res$content %>%
+            rawToChar() %>%
+            jsonlite::fromJSON(simplifyVector = T)
+        
+        shots_data <- json$resultSets$rowSet[[1]] %>%
+            data.frame(stringsAsFactors = F) %>%
+            as_tibble()
+        
+        shots_names <- json$resultSets$headers[[1]]
+        
+        shots_data <- shots_data %>%
+            set_names(shots_names) %>%
+            clean_names()
+        
+        shots <- bind_rows(shots, shots_data)
+        
+        
+        league_data <- json$resultSets$rowSet[[2]] %>%
+            data.frame(stringsAsFactors = F) %>%
+            as_tibble()
+        
+        league_names <- json$resultSets$headers[[2]]
+        
+        league_data <- league_data %>%
+            set_names(league_names) %>%
+            clean_names()
+        
+        league_avg <- bind_rows(league_avg, league_data)
+        
+        print(paste0(params$Season, " Complete"))
+        
+    }
+    
+    return(shots)
+    return(league_avg)
+    
+}
+
+all_shots <- scrape_nba_shots(2024)
 
 
 
@@ -1405,13 +1550,161 @@ df <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "team_shots") %>%
 
 
 
+generate_headers <- function() {
+    headers = c(
+        `Accept` = '*/*',
+        `Origin` = 'https://www.nba.com',
+        `Accept-Encoding` = 'gzip, deflate, br',
+        `Host` = 'stats.nba.com',
+        `User-Agent` = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15',
+        `Accept-Language` = 'en-US,en;q=0.9',
+        `Referer` = 'https://www.nba.com/',
+        `Connection` = 'keep-alive'
+    )
+    return(headers)
+}
+
+generate_parameters <- function(year, measure_type) {
+    year <- (year - 1)
+    season <- sprintf("%d-%02d", year, (year + 1) %% 100)
+    
+    params = list(
+        `AheadBehind` = '',
+        # `CFID` = '155',
+        # `CFPARAMS` = '2021-22',
+        `ClutchTime` = '',
+        `Conference` = '',
+        `ContextFilter` = '',
+        `ContextMeasure` = 'FGA',
+        `DateFrom` = '',
+        `DateTo` = '',
+        `Division` = '',
+        `EndPeriod` = '10',
+        `EndRange` = '28800',
+        `GROUP_ID` = '',
+        `GameEventID` = '',
+        `GameID` = '',
+        `GameSegment` = '',
+        `GroupID` = '',
+        `GroupMode` = '',
+        `GroupQuantity` = '5',
+        `LastNGames` = '0',
+        `LeagueID` = '00',
+        `Location` = '',
+        `Month` = '0',
+        `OnOff` = '',
+        `OppPlayerID` = '',
+        `OpponentTeamID` = '0',
+        `Outcome` = '',
+        `PORound` = '0',
+        `Period` = '0',
+        `PlayerID` = '0',
+        `PlayerID1` = '',
+        `PlayerID2` = '',
+        `PlayerID3` = '',
+        `PlayerID4` = '',
+        `PlayerID5` = '',
+        `PlayerPosition` = '',
+        `PointDiff` = '',
+        `Position` = '',
+        `RangeType` = '0',
+        `RookieYear` = '',
+        `Season` = season,
+        `SeasonSegment` = '',
+        `SeasonType` = 'Regular Season',
+        `ShotClockRange` = '',
+        `StartPeriod` = '1',
+        `StartRange` = '0',
+        `StarterBench` = '',
+        `TeamID` = '0',
+        `VsConference` = '',
+        `VsDivision` = '',
+        `VsPlayerID1` = '',
+        `VsPlayerID2` = '',
+        `VsPlayerID3` = '',
+        `VsPlayerID4` = '',
+        `VsPlayerID5` = '',
+        `VsTeamID` = ''
+    )
+    return(params)
+}
+
+scrape_nba_shots <- function(seasons) {
+    headers <- generate_headers()
+    
+    shots <- data.frame()
+    league_avg <- data.frame()
+    
+    
+    for (year in seasons) {
+        params <- generate_parameters(year)
+        
+        res <- httr::GET(url = 'https://stats.nba.com/stats/shotchartdetail',
+                         httr::add_headers(.headers=headers), query = params)
+        
+        json <- res$content %>%
+            rawToChar() %>%
+            jsonlite::fromJSON(simplifyVector = T)
+        
+        shots_data <- json$resultSets$rowSet[[1]] %>%
+            data.frame(stringsAsFactors = F) %>%
+            as_tibble()
+        
+        shots_names <- json$resultSets$headers[[1]]
+        
+        shots_data <- shots_data %>%
+            set_names(shots_names) %>%
+            clean_names()
+        
+        shots <- bind_rows(shots, shots_data)
+        
+        
+        league_data <- json$resultSets$rowSet[[2]] %>%
+            data.frame(stringsAsFactors = F) %>%
+            as_tibble()
+        
+        league_names <- json$resultSets$headers[[2]]
+        
+        league_data <- league_data %>%
+            set_names(league_names) %>%
+            clean_names()
+        
+        league_avg <- bind_rows(league_avg, league_data)
+        
+        print(paste0(params$Season, " Complete"))
+        
+    }
+
+    return(shots)
+    return(league_avg)
+    
+}
+
+all_shots <- scrape_nba_shots(2024)
+
+# create process shots function
 
 
 
 
 
+shots <- shots %>%
+    mutate(loc_x = as.numeric(as.character(loc_x)) / 10,
+           loc_y = as.numeric(as.character(loc_y)) / 10 + hoop_center_y,
+           shot_distance = as.numeric(as.character(shot_distance)),
+           shot_made_numeric = as.numeric(as.character(shot_made_flag)),
+           shot_made_flag = factor(shot_made_flag, levels = c("1", "0"), labels = c("made", "missed")),
+           shot_attempted_flag = as.numeric(as.character(shot_attempted_flag)),
+           shot_value = ifelse(tolower(shot_type) == "3pt field goal", 3, 2),
+           game_date = as.Date(game_date, format = "%Y%m%d")
+    )
 
-
+league_averages <- league_averages %>%
+    mutate(fga = as.numeric(as.character(fga)),
+           fgm = as.numeric(as.character(fgm)),
+           fg_pct = as.numeric(as.character(fg_pct)),
+           shot_value = ifelse(shot_zone_basic %in% c("Above the Break 3", "Backcourt", "Left Corner 3", "Right Corner 3"), 3, 2)
+    )
 
 
 
