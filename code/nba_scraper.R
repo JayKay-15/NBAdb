@@ -671,109 +671,6 @@ json <- res$content %>%
 
 
 
-# shots data
-
-headers = c(
-    `Sec-Fetch-Site` = "same-site",
-    `Accept` = "*/*",
-    `Origin` = "https://www.nba.com",
-    `Sec-Fetch-Dest` = "empty",
-    `Accept-Language` = "en-US,en;q=0.9",
-    `Sec-Fetch-Mode` = "cors",
-    `Host` = "stats.nba.com",
-    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
-    `Referer` = "https://www.nba.com/",
-    `Accept-Encoding` = "gzip, deflate, br",
-    `Connection` = "keep-alive"
-)
-
-params = list(
-    `AheadBehind` = "",
-    `CFID` = "",
-    `CFPARAMS` = "",
-    `ClutchTime` = "",
-    `Conference` = "",
-    `ContextFilter` = "",
-    `ContextMeasure` = "FGA",
-    `DateFrom` = "",
-    `DateTo` = "",
-    `Division` = "",
-    `EndPeriod` = "0",
-    `EndRange` = "28800",
-    `GROUP_ID` = "",
-    `GameEventID` = "",
-    `GameID` = "0022300748",
-    `GameSegment` = "",
-    `GroupID` = "",
-    `GroupMode` = "",
-    `GroupQuantity` = "5",
-    `LastNGames` = "0",
-    `LeagueID` = "00",
-    `Location` = "",
-    `Month` = "0",
-    `OnOff` = "",
-    `OppPlayerID` = "",
-    `OpponentTeamID` = "0",
-    `Outcome` = "",
-    `PORound` = "0",
-    `Period` = "0",
-    `PlayerID` = "1629652",
-    `PlayerID1` = "",
-    `PlayerID2` = "",
-    `PlayerID3` = "",
-    `PlayerID4` = "",
-    `PlayerID5` = "",
-    `PlayerPosition` = "",
-    `PointDiff` = "",
-    `Position` = "",
-    `RangeType` = "0",
-    `RookieYear` = "",
-    `Season` = "2023-24",
-    `SeasonSegment` = "",
-    `SeasonType` = "Regular Season",
-    `ShotClockRange` = "",
-    `StartPeriod` = "0",
-    `StartRange` = "0",
-    `StarterBench` = "",
-    `TeamID` = "1610612760",
-    `VsConference` = "",
-    `VsDivision` = "",
-    `VsPlayerID1` = "",
-    `VsPlayerID2` = "",
-    `VsPlayerID3` = "",
-    `VsPlayerID4` = "",
-    `VsPlayerID5` = "",
-    `VsTeamID` = ""
-)
-
-res <- httr::GET(url = "https://stats.nba.com/stats/shotchartdetail", httr::add_headers(.headers=headers), query = params)
-
-json <- res$content %>%
-    rawToChar() %>%
-    jsonlite::fromJSON(simplifyVector = T)
-
-data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
-column_names <- data$headers %>% as.character()  
-dt <- rbindlist(data$rowSet) %>% setnames(column_names)
-
-
-
-
-
-
-# Install and load the necessary packages
-library(tidyverse)
-library(rvest)
-
-# Read the HTML file
-html_content <- readLines("https://www.sportsbookreview.com/betting-odds/nba-basketball/money-line/full-game/?date=2024/01/05", warn = FALSE)
-
-# Parse the HTML content with rvest
-html <- html_content %>% paste(collapse = "\n") %>% read_html()
-
-html_product <- html %>% html_elements("#tbody-nba")
-
-table <- html_product %>% html_element("span")
 
 
 
@@ -786,70 +683,80 @@ table <- html_product %>% html_element("span")
 
 
 
+# working scraper for odds
 library(tidyverse)
 library(httr)
 library(jsonlite)
 
+# https://www.actionnetwork.com/nba/odds
 
+# https://www.actionnetwork.com/nba/props/game-props
 
-res <- httr::GET(url = "https://www.rotowire.com/betting/nba/tables/games-archive.php")
-
-json <- res$content %>%
-    rawToChar() %>%
-    jsonlite::fromJSON(simplifyVector = T)
-
-
-
-
-
-
-require(httr)
-
-cookies = c(
-    `_sg_b_v` = "4;1904;1707611565",
-    `XSRF-TOKEN` = "eyJpdiI6IlQ4QmQ3OThNY0FQZWdPQjZLVzQ3SlE9PSIsInZhbHVlIjoiSzdEWEM2UGJ5NFRNTFFUc2kyQTArZUJreGZ6ZTNxcXJzc2sxNFhvMmxZRVU2WFFHZHpuTUdRMkowcWVHaTRBcVgxQmM2SENhVzVMVktnOHRzUERxWHpPLzc5c2IzM2tvWkM1SnFIVXFVYXd2NlZoaDNDT3N6U09LSVU5aGFvTGgiLCJtYWMiOiJhYzdhMTI2NDdlODMxODA1ZTM4MTZjYWQyZGFlZGQ4ZTIyMmRlNmMyYjAwYmIwN2I0MDZiYmY4MWY4MjMzMTRmIiwidGFnIjoiIn0=",
-    `oddsportalcom_session` = "eyJpdiI6IjlveTFnZlhmeHVlUThUaHBpQjhZd3c9PSIsInZhbHVlIjoiYkVPamNSVVVVKyttWDFGTmNHTGIwNGo1S1MycmJ2MVE2eFRHb3NrL1E4S3JUay9kT2R6aGZ6b05kMHR4SHhlNG1CdndFNmdtaEMxdnlyc2NHVXh6cHR3eTNkeFZWK3NFZ3Z1Nlo1TVBBKzdwUEpSVHlMcTJGeU5qRG5jWlROWjUiLCJtYWMiOiIyMjhlYTc1NWNmZTI5ZjAwZjQ5MzE2MjNhNzdhMjU0ZmRmZGRmNTlmYTI3NmEyZWQ3OWFiOTQ4NmFmMTZlNDYzIiwidGFnIjoiIn0=",
-    `OptanonConsent` = "isGpcEnabled=0&datestamp=Sat Feb 10 2024 18:33:17 GMT-0600 (Central Standard Time)&version=202401.1.0&browserGpcFlag=0&isIABGlobal=false&consentId=da1caeb4-083d-47d2-8efb-14b89bd10b0a&interactionCount=1&landingPath=NotLandingPage&groups=C0001:1,C0002:0,C0004:0,V2STACK42:0&hosts=H194:1,H302:1,H236:1,H198:1,H203:1,H190:0,H301:0,H303:0,H304:0,H230:0,H305:0&genVendors=V2:0,&geolocation=US;TX&AwaitingReconsent=false",
-    `_sg_b_p` = "/,/,/basketball/usa/nba/,/basketball/usa/nba/,/basketball/usa/nba/results/,/basketball/usa/nba/results/,/basketball/usa/nba/results/,/basketball/usa/nba/results/,/basketball/usa/nba/results/",
-    `op_user_cookie` = "7403065303",
-    `op_user_hash` = "9c6b29dbe7d8662e393e9234d1002f94",
-    `op_user_time` = "1707065881",
-    `_sg_b_n` = "1707065900690",
-    `OptanonAlertBoxClosed` = "2024-02-04T16:58:10.054Z",
-    `eupubconsent-v2` = "CP5d47AP5d47AAcABBENAmEgAAAAAAAAAChQAAAAAACBIAIC8x0AEBeZKACAvMpABAXm.YAAAAAAAAAAA",
-    `op_user_full_time_zone` = "10",
-    `op_user_time_zone` = "-6",
-    `op_lang` = "en",
-    `op_cookie-test` = "ok"
-)
+date_id <- 20240215
 
 headers = c(
-    `Content-Type` = "application/json",
-    `Accept` = "application/json, text/plain, */*",
-    `Sec-Fetch-Site` = "same-origin",
-    `Accept-Language` = "en-US,en;q=0.9",
-    `Accept-Encoding` = "gzip, deflate, br",
-    `Sec-Fetch-Mode` = "cors",
-    `Host` = "www.oddsportal.com",
-    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
-    `Referer` = "https://www.oddsportal.com/basketball/usa/nba/results/",
-    `Connection` = "keep-alive",
+    `Sec-Fetch-Site` = "same-site",
+    `Accept` = "application/json",
+    `Origin` = "https://www.actionnetwork.com",
     `Sec-Fetch-Dest` = "empty",
-    `X-Requested-With` = "XMLHttpRequest",
-    `X-XSRF-TOKEN` = "eyJpdiI6IlQ4QmQ3OThNY0FQZWdPQjZLVzQ3SlE9PSIsInZhbHVlIjoiSzdEWEM2UGJ5NFRNTFFUc2kyQTArZUJreGZ6ZTNxcXJzc2sxNFhvMmxZRVU2WFFHZHpuTUdRMkowcWVHaTRBcVgxQmM2SENhVzVMVktnOHRzUERxWHpPLzc5c2IzM2tvWkM1SnFIVXFVYXd2NlZoaDNDT3N6U09LSVU5aGFvTGgiLCJtYWMiOiJhYzdhMTI2NDdlODMxODA1ZTM4MTZjYWQyZGFlZGQ4ZTIyMmRlNmMyYjAwYmIwN2I0MDZiYmY4MWY4MjMzMTRmIiwidGFnIjoiIn0="
+    `Accept-Language` = "en-US,en;q=0.9",
+    `Sec-Fetch-Mode` = "cors",
+    `Host` = "api.actionnetwork.com",
+    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+    `Referer` = "https://www.actionnetwork.com/nba/odds",
+    `Accept-Encoding` = "gzip, deflate, br",
+    `Connection` = "keep-alive"
 )
 
-params = list(
-    `_` = "1707611844035"
-)
-
-res <- httr::GET(url = "https://www.oddsportal.com/ajax-sport-country-tournament-archive_/3/IoGXixRr/X0/1/0/", httr::add_headers(.headers=headers), query = params, httr::set_cookies(.cookies = cookies))
-
+res <- httr::GET(url = paste0("https://api.actionnetwork.com/web/v2/scoreboard/nba?bookIds=15,30,76,75,123,69,68,972,71,247,79&date=",date_id,"&periods=event"),
+                 httr::add_headers(.headers=headers))
 
 json <- res$content %>%
     rawToChar() %>%
     jsonlite::fromJSON(simplifyVector = T)
 
+odds_game_info <- json$games %>%
+    select(id, season, start_time, away_team_id, home_team_id) %>%
+    rename(event_id = id)
+
+remove_standings <- function(team) {
+    team[["standings"]] <- NULL
+    return(team)
+}
+
+json[["games"]][["teams"]] <- lapply(json[["games"]][["teams"]], remove_standings)
+
+odds_team_info <- rbindlist(json[["games"]][["teams"]]) %>%
+    select(id, full_name, abbr)
+
+
+
+odds_spread <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["spread"]]) %>%
+    select(event_id, side, value) %>%
+    pivot_wider(names_from = side,
+                values_from = c(value)) %>%
+    rename_with(~paste0("spread_", .), -c(event_id))
+
+odds_moneyline <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["moneyline"]]) %>%
+    select(event_id, side, odds) %>%
+    pivot_wider(names_from = side,
+                values_from = c(odds)) %>%
+    rename_with(~paste0("moneyline_", .), -c(event_id))
+
+odds_totals <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["total"]]) %>%
+    select(event_id, value, side) %>%
+    filter(side == "over") %>%
+    select(-side) %>%
+    rename_with(~paste0("total_", .), -c(event_id))
+
+
+odds_final <- odds_game_info %>%
+    left_join(odds_team_info, by = c("away_team_id" = "id")) %>%
+    left_join(odds_team_info, by = c("home_team_id" = "id"),
+              suffix = c("_away", "_home")) %>%
+    left_join(odds_spread, by = "event_id") %>%
+    left_join(odds_moneyline, by = "event_id") %>%
+    left_join(odds_totals, by = "event_id")
 
 
 
@@ -859,23 +766,7 @@ json <- res$content %>%
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# daily line up scraper 
 headers = c(
     `sec-ch-ua` = '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
     `Referer` = "https://www.nba.com/",
