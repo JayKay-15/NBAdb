@@ -756,11 +756,28 @@ odds_final <- odds_game_info %>%
               suffix = c("_away", "_home")) %>%
     left_join(odds_spread, by = "event_id") %>%
     left_join(odds_moneyline, by = "event_id") %>%
-    left_join(odds_totals, by = "event_id")
+    left_join(odds_totals, by = "event_id") %>%
+    mutate(
+        start_time = format(with_tz(ymd_hms(start_time),
+                                    tzone = "America/Chicago"), "%Y-%m-%d")
+    )
 
 
 
+season_start <- format(with_tz(ymd_hms(json$league$reg_season_start),
+                               tzone = "America/Chicago"), "%Y-%m-%d")
+season_end <- format(with_tz(ymd_hms(json$league$reg_season_end),
+                             tzone = "America/Chicago"), "%Y-%m-%d")
+season_blacklist <- format(with_tz(ymd_hms(json$league$blacklist_dates),
+                                   tzone = "America/Chicago"), "%Y-%m-%d")
+season_blacklist <- as_date(season_blacklist)
 
+season_dates <- seq(as_date(season_start), as_date(season_end), by = "days")
+
+season_active <- season_dates[!(season_dates %in% season_blacklist)]
+
+dates_before_today <- season_active[season_active < Sys.Date()]
+dates_after_today <- season_active[season_active >= Sys.Date()]
 
 
 
