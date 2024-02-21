@@ -18,7 +18,24 @@ NBAdb <- dbConnect(SQLite(), "../nba_sql_db/nba_db")
 #### MAMBA DATABASE ####
 
 #### nba schedule scraper function ----
-scrape_nba_schedule <- function(url, headers) {
+scrape_nba_schedule <- function() {
+    
+    # Define the URL and headers
+    url <- "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json"
+    headers <- c(
+        `Sec-Fetch-Site` = "same-site",
+        `Accept` = "*/*",
+        `Origin` = "https://www.nba.com",
+        `Sec-Fetch-Dest` = "empty",
+        `Accept-Language` = "en-US,en;q=0.9",
+        `Sec-Fetch-Mode` = "cors",
+        `Host` = "cdn.nba.com",
+        `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+        `Referer` = "https://www.nba.com/",
+        `Accept-Encoding` = "gzip, deflate, br",
+        `Connection` = "keep-alive"
+    )
+    
     # Send a GET request to the specified URL with the given headers
     res <- httr::GET(url = url, httr::add_headers(.headers = headers))
     data <- httr::content(res, "text")
@@ -126,39 +143,10 @@ scrape_nba_schedule <- function(url, headers) {
     
     nba_schedule <- nba_schedule %>% left_join(b2b_schedule)
     
-    return(nba_schedule)
+    assign(x = "nba_schedule", nba_schedule, envir = .GlobalEnv)
 }
 
-# Define the URL and headers
-url <- "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json"
-headers <- c(
-    `Sec-Fetch-Site` = "same-site",
-    `Accept` = "*/*",
-    `Origin` = "https://www.nba.com",
-    `Sec-Fetch-Dest` = "empty",
-    `Accept-Language` = "en-US,en;q=0.9",
-    `Sec-Fetch-Mode` = "cors",
-    `Host` = "cdn.nba.com",
-    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-    `Referer` = "https://www.nba.com/",
-    `Accept-Encoding` = "gzip, deflate, br",
-    `Connection` = "keep-alive"
-)
-
-# Call the function to scrape the NBA schedule
-nba_schedule <- scrape_nba_schedule(url, headers)
-
-NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db")
-DBI::dbWriteTable(NBAdb, "nba_schedule_current", nba_schedule, overwrite = T)
-DBI::dbDisconnect(NBAdb)
-
-# saveRDS(nba_schedule, "./nba_schedule.rds")
-
-nba_schedule <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"),
-                    "nba_schedule_current") %>%
-    collect() %>%
-    mutate(game_date = as_date(game_date, origin ="1970-01-01"))
-
+scrape_nba_schedule()
 
 #### scrape stats for mamba model ----
 generate_headers <- function() {
@@ -752,10 +740,10 @@ nba_scores <- function(seasons) {
                team_name, opp_team_name, game_id:min, pts, opp_pts) %>%
         filter(location == "away")
     
-    return(joined_stats)
+    assign(x = "all_nba_scores", joined_stats, envir = .GlobalEnv)
 }
 
-all_scores <- nba_scores(1997:2023)
+nba_scores(1997:2023)
 
 
 #### NBA STATS DATABASE ####
@@ -896,12 +884,10 @@ scrape_nba_team_stats <- function(seasons) {
     nba_final <- team_all_stats %>%
         left_join(team_games, by = c("game_id", "team_name"))
     
-    return(nba_final)
+    assign(x = "box_scores_team", nba_final, envir = .GlobalEnv)
 }
 
-df <- scrape_nba_team_stats(seasons = c(1997:2023))
-
-DBI::dbWriteTable(NBAdb, "box_scores_team", df, overwrite = T)
+scrape_nba_team_stats(seasons = c(1997:2023))
 
 #### scrape all player stats ----
 generate_headers <- function() {
@@ -1040,12 +1026,10 @@ scrape_nba_player_stats <- function(seasons) {
         left_join(player_games, by = c("game_id", "player_name")) %>%
         arrange(game_id, location)
     
-    return(nba_final)
+    assign(x = "box_scores_player", nba_final, envir = .GlobalEnv)
 }
 
-df <- scrape_nba_player_stats(seasons = c(1997:2023))
-
-DBI::dbWriteTable(NBAdb, "box_scores_player", df, overwrite = T)
+scrape_nba_player_stats(seasons = c(1997:2023))
 
 ## play by play & win probability & fanduel ----
 
@@ -1169,8 +1153,8 @@ scrape_nba_play_by_play <- function(game_ids) {
         
     }
     
-    pbp_df <<- pbp_df
-    wp_df <<- wp_df
+    assign(x = "play_by_play", pbp_df, envir = .GlobalEnv)
+    assign(x = "win_probability", wp_df, envir = .GlobalEnv)
     
 }
 
@@ -1216,10 +1200,10 @@ scrape_nba_play_by_play <- function(game_ids) {
         
     }
     
-    return(pbp_df)
+    assign(x = "play_by_play", pbp_df, envir = .GlobalEnv)
 }
 
-pbp <- scrape_nba_play_by_play(game_ids)
+scrape_nba_play_by_play(game_ids)
 
 #### scrape win probability ----
 scrape_nba_win_probability <- function(game_ids) {
@@ -1282,11 +1266,10 @@ scrape_nba_win_probability <- function(game_ids) {
         
     }
     
-    return(wp_df)
-    
+    assign(x = "win_probability", wp_df, envir = .GlobalEnv)
 }
 
-win_prob <- scrape_nba_win_probability(game_ids)
+scrape_nba_win_probability(game_ids)
 
 #### scrape fanduel ----
 scrape_fanduel <- function(game_ids) {
@@ -1330,11 +1313,10 @@ scrape_fanduel <- function(game_ids) {
         
     }
     
-    return(fd_df)
-    
+    assign(x = "fanduel", fd_df, envir = .GlobalEnv)
 }
 
-fanduel <- scrape_fanduel(game_ids)
+scrape_fanduel(game_ids)
 
 ## shots data ----
 
@@ -1466,8 +1448,8 @@ scrape_nba_shots <- function(seasons) {
         
     }
     
-    shots <<- shots
-    league_avg <<- league_avg
+    assign(x = "all_shots", shots, envir = .GlobalEnv)
+    assign(x = "league_avg", league_avg, envir = .GlobalEnv)
     
 }
 
@@ -1476,7 +1458,7 @@ scrape_nba_shots(1997:2023)
 #### process shots data ----
 process_shots <- function(shots, league_avg) {
     
-    shots_processed <<- shots %>%
+    shots_processed <- shots %>%
         mutate(loc_x = (as.numeric(loc_x) / 10),
                loc_y = (as.numeric(loc_y) / 10) + 5.25,
                shot_distance = as.numeric(shot_distance),
@@ -1488,30 +1470,110 @@ process_shots <- function(shots, league_avg) {
                game_date = as_date(game_date, format = "%Y%m%d")
         )
     
-    league_avg_processed <<- league_avg %>%
+    league_avg_processed <- league_avg %>%
         mutate(fga = as.numeric(fga),
                fgm = as.numeric(fgm),
                fg_pct = as.numeric(fg_pct),
                shot_value = if_else(shot_zone_basic %in% c("Above the Break 3", "Backcourt", "Left Corner 3", "Right Corner 3"), 3, 2)
         )
     
+    assign(x = "all_shots_processed", shots_processed, envir = .GlobalEnv)
+    assign(x = "league_avg_processed", league_avg_processed, envir = .GlobalEnv)
 }
 
 process_shots(shots, league_avg)
 
+## dictionaries ----
 
+#### scrape player dictionary ----
+scrape_player_dictionary <- function() {
+    
+    headers = c(
+        `Sec-Fetch-Site` = "same-site",
+        `Accept` = "*/*",
+        `Origin` = "https://www.nba.com",
+        `Sec-Fetch-Dest` = "empty",
+        `Accept-Language` = "en-US,en;q=0.9",
+        `Sec-Fetch-Mode` = "cors",
+        `Host` = "stats.nba.com",
+        `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+        `Referer` = "https://www.nba.com/",
+        `Accept-Encoding` = "gzip, deflate, br",
+        `Connection` = "keep-alive"
+    )
+    
+    params = list(
+        `College` = "",
+        `Country` = "",
+        `DraftPick` = "",
+        `DraftRound` = "",
+        `DraftYear` = "",
+        `Height` = "",
+        `Historical` = "1",
+        `LeagueID` = "00",
+        `Season` = "2023-24",
+        `SeasonType` = "Regular Season",
+        `TeamID` = "0",
+        `Weight` = ""
+    )
+    
+    res <- httr::GET(url = "https://stats.nba.com/stats/playerindex",
+                     httr::add_headers(.headers=headers), query = params)
+    
+    data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
+    
+    column_names <- data$headers %>%
+        as.character()
+    
+    dt <- rbindlist(data$rowSet) %>%
+        setnames(column_names) %>%
+        clean_names()
+    
+    assign(x = "player_dictionary", dt, envir = .GlobalEnv)
+    
+}
 
+scrape_player_dictionary()
 
+#### scrape team dictionary ----
+scrape_team_dictionary <- function() {
+    
+    headers = c(
+        `Sec-Fetch-Site` = "same-site",
+        `Accept` = "*/*",
+        `Origin` = "https://www.nba.com",
+        `Sec-Fetch-Dest` = "empty",
+        `Accept-Language` = "en-US,en;q=0.9",
+        `Sec-Fetch-Mode` = "cors",
+        `Host` = "stats.nba.com",
+        `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+        `Referer` = "https://www.nba.com/",
+        `Accept-Encoding` = "gzip, deflate, br",
+        `Connection` = "keep-alive"
+    )
+    
+    params = list(
+        `LeagueID` = "00",
+        `Season` = "2023-24"
+    )
+    
+    res <- httr::GET(url = "https://stats.nba.com/stats/franchisehistory",
+                     httr::add_headers(.headers=headers), query = params)
+    
+    data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
+    
+    column_names <- data$headers %>%
+        as.character()
+    
+    dt <- rbindlist(data$rowSet) %>%
+        setnames(column_names) %>%
+        clean_names()
+    
+    assign(x = "team_dictionary", dt, envir = .GlobalEnv)
+    
+}
 
-
-
-
-
-
-
-
-## player_profiles ----
-players <- player_profiles(player_ids = unique(TeamShots_db$idPlayer))
+scrape_team_dictionary()
 
 
 #### basketball reference ---- re-code team and player stats
@@ -1600,16 +1662,16 @@ dbListTables(NBAdb)
 # DBI::dbWriteTable(NBAdb, "league_avg", league_avg, append = T)                      # automated --- 1997-2023
 # DBI::dbWriteTable(NBAdb, "all_shots_processed", shots_processed, append = T)        # automated --- 1997-2023
 # DBI::dbWriteTable(NBAdb, "league_avg_processed", league_avg_processed, append = T)  # automated --- 1997-2023
-# DBI::dbWriteTable(NBAdb, "all_nba_scores", all_scores, append = T)                  # automated --- 1997-2023
+# DBI::dbWriteTable(NBAdb, "all_nba_scores", all_nba_scores, append = T)              # automated --- 1997-2023
 
 #### Play by Play & Win Probability ----
 # DBI::dbWriteTable(NBAdb, "play_by_play", pbp_df, append = T)                        # automated --- 2019-2023
 # DBI::dbWriteTable(NBAdb, "win_probability", wp_df, append = T)                      # automated --- 2019-2023
 
 #### Dictionaries ----
-# DBI::dbWriteTable(NBAdb, "player_dictionary", df_nba_player_dict, overwrite = T)    # automated --- 2023
-# DBI::dbWriteTable(NBAdb, "team_dictionary", team_dict, overwrite = T)               # as needed ---
-# DBI::dbWriteTable(NBAdb, "player_profiles", players, overwrite = T)                 # automated ---
+# DBI::dbWriteTable(NBAdb, "player_dictionary", player_dictionary, overwrite = T)     # automated ---
+# DBI::dbWriteTable(NBAdb, "team_dictionary", team_dictionary, overwrite = T)         # automated ---
+
 
 dbDisconnect(NBAdb)
 
