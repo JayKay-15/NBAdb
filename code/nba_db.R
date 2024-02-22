@@ -14,7 +14,6 @@ options(scipen = 999999)
 #### load database ----
 NBAdb <- dbConnect(SQLite(), "../nba_sql_db/nba_db")
 
-
 #### MAMBA DATABASE ####
 
 #### nba schedule scraper function ----
@@ -714,7 +713,7 @@ nba_scores <- function(seasons) {
                          httr::add_headers(.headers = headers), query = params)
         data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
         column_names <- data$headers %>% as.character()
-        dt <- rbindlist(data$rowSet) %>% setnames(column_names)
+        dt <- rbindlist(data$rowSet) %>% setnames(column_names) %>% clean_names()
         
         all_data <- bind_rows(all_data, dt)
         
@@ -722,23 +721,60 @@ nba_scores <- function(seasons) {
     }
     
     team_all_stats <- all_data %>%
-        clean_names() %>%
         arrange(game_date, game_id) %>%
         mutate(location = if_else(grepl("@", matchup) == T, "away", "home"),
                game_date = as_date(game_date),
                season_year = as.numeric(substr(season_year, 1, 4)) + 1) %>%
-        select(season_year:matchup, location, wl:min, pts)
+        select(season_year:matchup, location, wl:min, pts, plus_minus)
     
-    opp_all_stats <- team_all_stats %>%
-        select(game_id, team_abbreviation, team_name, pts) %>%
+    team_games <- team_all_stats %>%
+        distinct(season_year, game_id, game_date, team_id, team_name) %>%
+        group_by(season_year, team_id) %>%
+        mutate(
+            game_count_season = 1:n(),
+            days_rest_team = ifelse(game_count_season > 1,
+                                    (game_date - lag(game_date) - 1),
+                                    120),
+            days_next_game_team =
+                ifelse(game_count_season < 82,
+                       ((
+                           lead(game_date) - game_date
+                       ) - 1),
+                       120),
+            days_next_game_team = days_next_game_team %>% as.numeric(),
+            days_rest_team = days_rest_team %>% as.numeric(),
+            is_b2b = if_else(days_next_game_team == 0 |
+                                 days_rest_team == 0, TRUE, FALSE),
+            is_b2b_first = if_else(lead(days_next_game_team) == 0, TRUE, FALSE),
+            is_b2b_second = if_else(lag(days_next_game_team) == 0, TRUE, FALSE)
+        ) %>%
+        ungroup() %>%
+        mutate_if(is.logical, ~ ifelse(is.na(.), FALSE, .)) %>%
+        select(game_id, team_name,
+               is_b2b_first, is_b2b_second, game_count_season)
+    
+    opp_team_games <- team_games %>%
+        select(game_id, team_name,
+               is_b2b_first, is_b2b_second, game_count_season) %>%
         rename_with(~paste0("opp_", .), -c(game_id))
     
-    joined_stats <- team_all_stats %>%
+    opp_all_stats <- team_all_stats %>%
+        select(game_id, team_id, team_abbreviation, team_name, pts) %>%
+        rename_with(~paste0("opp_", .), -c(game_id))
+    
+    all_stats <- team_all_stats %>%
         inner_join(opp_all_stats, by = c("game_id"), relationship = "many-to-many") %>%
         filter(team_name != opp_team_name) %>%
-        select(season_year:team_abbreviation, opp_team_abbreviation,
-               team_name, opp_team_name, game_id:min, pts, opp_pts) %>%
-        filter(location == "away")
+        select(season_year, team_id, opp_team_id, team_abbreviation, team_name,
+               opp_team_abbreviation, opp_team_name, game_id:min, pts, opp_pts,
+               plus_minus)
+    
+    joined_stats <- all_stats %>%
+        # filter(location == "away") %>%
+        left_join(team_games, by = c("game_id", "team_name")) %>%
+        left_join(opp_team_games, by = c("game_id", "opp_team_name")) %>%
+        select(season_year:opp_pts, plus_minus, game_count_season, opp_game_count_season,
+               is_b2b_first, is_b2b_second, opp_is_b2b_first, opp_is_b2b_second)
     
     assign(x = "all_nba_scores", joined_stats, envir = .GlobalEnv)
 }
@@ -1676,7 +1712,7 @@ dbListTables(NBAdb)
 dbDisconnect(NBAdb)
 
 ## query db
-df <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "team_dictionary") %>%
+df <- tbl(NBAdb, "box_scores_team") %>%
     collect() %>%
     mutate(game_date = as_date(game_date, origin ="1970-01-01"))
 
@@ -1727,9 +1763,6 @@ df <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "team_dictionary") %>%
 # 
 # # rename new data by remove "_tmp"
 # DBI::dbExecute(con, "ALTER TABLE flights_tmp RENAME TO flights;")
-
-
-
 
 
 
