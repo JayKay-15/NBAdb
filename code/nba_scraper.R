@@ -780,11 +780,18 @@ dates_before_today <- season_active[season_active < Sys.Date()]
 dates_after_today <- season_active[season_active >= Sys.Date()]
 
 
+season_active <- data.frame(game_date = season_active)
+
+season_active <- as_date(season_active$game_date)
+
+DBI::dbWriteTable(NBAdb, "odds_season_active", season_active, append = T)
 
 
 
-
-
+season_active <- tbl(NBAdb, "odds_season_active") %>%
+    collect() %>%
+    mutate(game_date = as_date(game_date, origin ="1970-01-01")) %>%
+    filter(game_date < Sys.Date())
 
 scrape_nba_odds <- function(date_range) {
     
@@ -896,11 +903,13 @@ scrape_nba_odds <- function(date_range) {
     assign(x = "nba_odds", odds_df, envir = .GlobalEnv)
 }
 
-scrape_nba_odds(dates_before_today)
+scrape_nba_odds(season_active$game_date)
+
+
 
 saveRDS(nba_odds, "/Users/jesse/Desktop/nba_odds.rds")
 
-
+nba_odds <- read_rds("/Users/jesse/Desktop/nba_odds.rds")
 
 
 
