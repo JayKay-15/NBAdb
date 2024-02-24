@@ -788,12 +788,14 @@ DBI::dbWriteTable(NBAdb, "odds_season_active", season_active, append = T)
 
 
 
-season_active <- tbl(NBAdb, "odds_season_active") %>%
-    collect() %>%
-    mutate(game_date = as_date(game_date, origin ="1970-01-01")) %>%
-    filter(game_date < Sys.Date())
+
 
 scrape_nba_odds <- function(date_range) {
+    
+    season_active <- tbl(NBAdb, "odds_season_active") %>%
+        collect() %>%
+        mutate(game_date = as_date(game_date, origin ="1970-01-01")) %>%
+        filter(game_date < Sys.Date())
     
     odds_df <- data.frame()
     
@@ -837,8 +839,6 @@ scrape_nba_odds <- function(date_range) {
         
         odds_team_info <- rbindlist(json[["games"]][["teams"]]) %>%
             select(id, full_name, abbr)
-        
-        
         
         odds_spread <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["spread"]]) %>%
             select(event_id, side, value) %>%
@@ -905,11 +905,204 @@ scrape_nba_odds <- function(date_range) {
 
 scrape_nba_odds(season_active$game_date)
 
+nba_odds_away <- odds_df %>%
+    select(event_id, season_year, game_date,
+           away_team_id, away_team_name, away_abbr, away_spread, away_moneyline,
+           over_under, away_implied_prob) %>%
+    rename_with(~gsub("^away_", "", .), starts_with("away_")) %>%
+    mutate(location = "away")
+
+nba_odds_home <- nba_odds %>%
+    select(event_id, season_year, game_date,
+           home_team_id, home_team_name, home_abbr, home_spread, home_moneyline,
+           over_under, home_implied_prob) %>%
+    rename_with(~gsub("^home_", "", .), starts_with("home_")) %>%
+    mutate(location = "home")
+
+nba_odds_long <- bind_rows(nba_odds_away, nba_odds_home) %>%
+    arrange(game_date, event_id, location)
+
+odds_final <- all_nba_scores %>%
+    select(season_year, game_id, game_date, team_name, location) %>%
+    left_join(nba_odds_long) %>%
+    arrange(game_date, game_id, location) %>%
+    select(season_year, game_id, game_date, team_name, location,
+           spread, moneyline, over_under, implied_prob)
 
 
 saveRDS(nba_odds, "/Users/jesse/Desktop/nba_odds.rds")
 
-nba_odds <- read_rds("/Users/jesse/Desktop/nba_odds.rds")
+nba_odds <- readxl::read_xlsx("/Users/jesse/Desktop/odds_db.xlsx")
+
+
+
+
+
+nba_odds_away <- nba_odds %>%
+    select(game_id, season_year, game_date,
+           away_team_name, away_abbr, away_spread, away_moneyline,
+           over_under, away_implied_prob) %>%
+    rename_with(~gsub("^away_", "", .), starts_with("away_")) %>%
+    mutate(location = "away")
+
+nba_odds_home <- nba_odds %>%
+    select(game_id, season_year, game_date,
+           home_team_name, home_abbr, home_spread, home_moneyline,
+           over_under, home_implied_prob) %>%
+    rename_with(~gsub("^home_", "", .), starts_with("home_")) %>%
+    mutate(location = "home")
+
+nba_odds_long <- bind_rows(nba_odds_away, nba_odds_home) %>%
+    arrange(game_date, game_id, location)
+
+odds_final_2 <- all_nba_scores %>%
+    select(season_year, game_id, game_date, team_name, location) %>%
+    left_join(nba_odds_long) %>%
+    arrange(game_date, game_id, location) %>%
+    select(season_year, game_id, game_date, team_name, location,
+           spread, moneyline, over_under, implied_prob) %>%
+    mutate(implied_prob = as.numeric(implied_prob))
+
+
+
+
+
+saveRDS(odds_final_2, "/Users/jesse/Desktop/nba_odds_14_23_reworked.rds")
+saveRDS(odds_final, "/Users/jesse/Desktop/nba_odds_24_reworked.rds")
+
+
+# keep in long format - function pivots wider -- need to add team_spread, opp_spread, et.c
+scrape_nba_odds <- function(date_range) {
+    
+    season_active <- tbl(NBAdb, "odds_season_active") %>%
+        collect() %>%
+        mutate(game_date = as_date(game_date, origin ="1970-01-01")) %>%
+        filter(game_date < Sys.Date())
+    
+    odds_df <- data.frame()
+    
+    for (date_id in date_range) {
+        
+        date_id <- gsub("-", "", as_date(date_id))
+        
+        print(paste0("scraping ", date_id))
+        
+        headers = c(
+            `Sec-Fetch-Site` = "same-site",
+            `Accept` = "application/json",
+            `Origin` = "https://www.actionnetwork.com",
+            `Sec-Fetch-Dest` = "empty",
+            `Accept-Language` = "en-US,en;q=0.9",
+            `Sec-Fetch-Mode` = "cors",
+            `Host` = "api.actionnetwork.com",
+            `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+            `Referer` = "https://www.actionnetwork.com/nba/odds",
+            `Accept-Encoding` = "gzip, deflate, br",
+            `Connection` = "keep-alive"
+        )
+        
+        res <- httr::GET(url = paste0("https://api.actionnetwork.com/web/v2/scoreboard/nba?bookIds=15,30,76,75,123,69,68,972,71,247,79&date=",date_id,"&periods=event"),
+                         httr::add_headers(.headers=headers))
+        
+        json <- res$content %>%
+            rawToChar() %>%
+            jsonlite::fromJSON(simplifyVector = T)
+        
+        odds_game_away <- json$games %>%
+            select(id, season, start_time, away_team_id, home_team_id) %>%
+            rename(event_id = id,
+                   team_id = away_team_id,
+                   opp_team_id = home_team_id) %>%
+            mutate(location = "away")
+        
+        odds_game_home <- json$games %>%
+            select(id, season, start_time, away_team_id, home_team_id) %>%
+            rename(event_id = id,
+                   team_id = home_team_id,
+                   opp_team_id = away_team_id) %>%
+            mutate(location = "home")
+        
+        odds_game_info <- bind_rows(odds_game_away, odds_game_home) %>%
+            mutate(
+                start_time = as_date(format(with_tz(ymd_hms(start_time),
+                                                    tzone = "America/Chicago"),
+                                            "%Y-%m-%d"))
+            ) %>%
+            arrange(event_id, location)
+        
+        remove_standings <- function(team) {
+            team[["standings"]] <- NULL
+            return(team)
+        }
+        
+        json[["games"]][["teams"]] <- lapply(json[["games"]][["teams"]], remove_standings)
+        
+        odds_team_info <- rbindlist(json[["games"]][["teams"]]) %>%
+            select(id, full_name, abbr)
+        
+        odds_spread <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["spread"]]) %>%
+            select(event_id, side, value) %>%
+            rename(location = side,
+                   spread = value)
+        
+        odds_moneyline <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["moneyline"]]) %>%
+            select(event_id, side, odds) %>%
+            rename(location = side,
+                   moneyline = odds)
+        
+        odds_totals <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["total"]]) %>%
+            select(event_id, value) %>%
+            rename(over_under = value) %>%
+            distinct()
+        
+        odds_clean <- odds_game_info %>%
+            left_join(odds_team_info, by = c("team_id" = "id")) %>%
+            left_join(odds_team_info, by = c("opp_team_id" = "id"),
+                      suffix = c("_team", "_opp")) %>%
+            left_join(odds_spread, by = c("event_id", "location")) %>%
+            left_join(odds_moneyline, by = c("event_id", "location")) %>%
+            left_join(odds_totals, by = c("event_id")) %>%
+            rename(
+                season_year = season,
+                game_date = start_time,
+                team_name = full_name_team,
+                opp_team_name = full_name_opp,
+                team_abbr = abbr_team,
+                opp_abbr = abbr_opp,
+                away_spread = spread_away,
+                home_spread = spread_home,
+                away_moneyline = moneyline_away,
+                home_moneyline = moneyline_home,
+                over_under = total_value
+            )
+        
+        odds_wpo <- odds_clean %>%
+            mutate(away_moneyline = odds.converter::odds.us2dec(away_moneyline),
+                   home_moneyline = odds.converter::odds.us2dec(home_moneyline)) %>%
+            select(away_moneyline, home_moneyline)
+        
+        odds_wpo <- implied::implied_probabilities(odds_wpo, method = 'wpo')
+        
+        odds_final <- odds_clean %>%
+            mutate(away_implied_prob = odds_wpo$probabilities[,1],
+                   home_implied_prob = odds_wpo$probabilities[,2])
+        
+        odds_df <- bind_rows(odds_df, odds_final)
+        
+    }
+    
+    assign(x = "nba_odds", odds_df, envir = .GlobalEnv)
+}
+
+scrape_nba_odds(season_active$game_date)
+
+
+
+
+
+
+
+
 
 
 
@@ -1031,17 +1224,6 @@ starter_fic <- read_csv("/Users/jesse/Desktop/starter_fic.csv")
 
 
     
-
-
-
-
-
-
-
-
-
-
-
 
 
 
