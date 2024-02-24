@@ -692,7 +692,7 @@ library(jsonlite)
 
 # https://www.actionnetwork.com/nba/props/game-props
 
-date_id <- 20221225
+date_id <- 20240114
 
 headers = c(
     `Sec-Fetch-Site` = "same-site",
@@ -971,13 +971,15 @@ saveRDS(odds_final_2, "/Users/jesse/Desktop/nba_odds_14_23_reworked.rds")
 saveRDS(odds_final, "/Users/jesse/Desktop/nba_odds_24_reworked.rds")
 
 
-# keep in long format - function pivots wider -- need to add team_spread, opp_spread, et.c
+
+
+NBAdb <- dbConnect(SQLite(), "../nba_sql_db/nba_db")
+season_active <- tbl(NBAdb, "odds_season_active") %>%
+    collect() %>%
+    mutate(game_date = as_date(game_date, origin ="1970-01-01")) %>%
+    filter(game_date < Sys.Date())
+
 scrape_nba_odds <- function(date_range) {
-    
-    season_active <- tbl(NBAdb, "odds_season_active") %>%
-        collect() %>%
-        mutate(game_date = as_date(game_date, origin ="1970-01-01")) %>%
-        filter(game_date < Sys.Date())
     
     odds_df <- data.frame()
     
@@ -1038,19 +1040,41 @@ scrape_nba_odds <- function(date_range) {
         json[["games"]][["teams"]] <- lapply(json[["games"]][["teams"]], remove_standings)
         
         odds_team_info <- rbindlist(json[["games"]][["teams"]]) %>%
-            select(id, full_name, abbr)
+            select(id, full_name)
         
-        odds_spread <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["spread"]]) %>%
+        all_spread <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["spread"]])
+        all_moneyline <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["moneyline"]])
+        all_over_under <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["total"]])
+        
+        odds_spread <- all_spread %>%
             select(event_id, side, value) %>%
             rename(location = side,
                    spread = value)
         
-        odds_moneyline <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["moneyline"]]) %>%
+        odds_spread <- odds_spread %>%
+            left_join(odds_spread,
+                      by = "event_id",
+                      relationship = "many-to-many",
+                      suffix = c("_team", "_opp")) %>%
+            filter(location_team != location_opp) %>%
+            select(-location_opp) %>%
+            rename(location = location_team)
+            
+        odds_moneyline <- all_moneyline %>%
             select(event_id, side, odds) %>%
             rename(location = side,
                    moneyline = odds)
         
-        odds_totals <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["total"]]) %>%
+        odds_moneyline <- odds_moneyline %>%
+            left_join(odds_moneyline,
+                      by = "event_id",
+                      relationship = "many-to-many",
+                      suffix = c("_team", "_opp")) %>%
+            filter(location_team != location_opp) %>%
+            select(-location_opp) %>%
+            rename(location = location_team)
+        
+        odds_totals <- all_over_under %>%
             select(event_id, value) %>%
             rename(over_under = value) %>%
             distinct()
@@ -1062,30 +1086,29 @@ scrape_nba_odds <- function(date_range) {
             left_join(odds_spread, by = c("event_id", "location")) %>%
             left_join(odds_moneyline, by = c("event_id", "location")) %>%
             left_join(odds_totals, by = c("event_id")) %>%
+            select(-c(event_id, team_id, opp_team_id)) %>%
             rename(
                 season_year = season,
                 game_date = start_time,
                 team_name = full_name_team,
                 opp_team_name = full_name_opp,
-                team_abbr = abbr_team,
-                opp_abbr = abbr_opp,
-                away_spread = spread_away,
-                home_spread = spread_home,
-                away_moneyline = moneyline_away,
-                home_moneyline = moneyline_home,
-                over_under = total_value
-            )
+                team_spread = spread_team,
+                opp_spread = spread_opp,
+                team_moneyline = moneyline_team,
+                opp_moneyline = moneyline_opp
+            ) %>%
+            mutate(game_date = as_date(game_date))
         
         odds_wpo <- odds_clean %>%
-            mutate(away_moneyline = odds.converter::odds.us2dec(away_moneyline),
-                   home_moneyline = odds.converter::odds.us2dec(home_moneyline)) %>%
-            select(away_moneyline, home_moneyline)
+            mutate(team_moneyline = odds.converter::odds.us2dec(team_moneyline),
+                   opp_moneyline = odds.converter::odds.us2dec(opp_moneyline)) %>%
+            select(team_moneyline, opp_moneyline)
         
         odds_wpo <- implied::implied_probabilities(odds_wpo, method = 'wpo')
         
         odds_final <- odds_clean %>%
-            mutate(away_implied_prob = odds_wpo$probabilities[,1],
-                   home_implied_prob = odds_wpo$probabilities[,2])
+            mutate(team_implied_prob = odds_wpo$probabilities[,1],
+                   opp_implied_prob = odds_wpo$probabilities[,2])
         
         odds_df <- bind_rows(odds_df, odds_final)
         
@@ -1098,12 +1121,29 @@ scrape_nba_odds(season_active$game_date)
 
 
 
+odds_final_2 <- read_rds("/Users/jesse/Desktop/nba_odds_14_23_reworked.rds")
+
+odds_final_2 <- odds_final_2 %>%
+    left_join(odds_final_2 %>% select(game_id, team_name, spread,
+                                      moneyline, implied_prob),
+              by = "game_id",
+              relationship = "many-to-many",
+              suffix = c("_team", "_opp")) %>%
+    filter(team_name_team != team_name_opp) %>%
+    rename(team_name = team_name_team,
+           opp_team_name = team_name_opp,
+           team_spread = spread_team,
+           opp_spread = spread_opp,
+           team_moneyline = moneyline_team,
+           opp_moneyline = moneyline_opp,
+           team_implied_prob = implied_prob_team,
+           opp_implied_prob = implied_prob_opp) %>%
+    select(season_year, game_date, location, team_name, opp_team_name,
+           team_spread, opp_spread, team_moneyline, opp_moneyline, over_under,
+           team_implied_prob, opp_implied_prob)
 
 
-
-
-
-
+all_nba_odds <- bind_rows(odds_final_2, nba_odds) %>% mutate(game_date = as_date(game_date))
 
 
 
