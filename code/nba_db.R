@@ -286,7 +286,6 @@ assign(x = "nba_schedule", nba_schedule_full, envir = .GlobalEnv)
 } ## old version - delete?
 
 #### scrape stats for mamba model ----
-
 mamba_nba <- function(seasons) {
     
     generate_headers <- function() {
@@ -423,7 +422,7 @@ mamba_nba <- function(seasons) {
         rename_with(~paste0("opp_", .), -c(game_id)) %>%
         select(-opp_plus_minus)
     
-    all_stats <- team_all_stats %>%
+    raw_stats <- team_all_stats %>%
         inner_join(opp_all_stats, by = c("game_id"), relationship = "many-to-many") %>%
         filter(team_name != opp_team_name) %>%
         left_join(team_games, by = c("game_id", "team_name")) %>%
@@ -436,7 +435,7 @@ mamba_nba <- function(seasons) {
                fgm:opp_pct_uast_fgm) %>%
         arrange(game_date, game_id, location)
     
-    stats_mov_avg <- all_stats %>%
+    stats_mov_avg <- raw_stats %>%
         mutate(pts_2pt_mr = round(pct_pts_2pt_mr*pts,0),
                ast_2pm = round(pct_ast_2pm*(fgm-fg3m),0),
                ast_3pm = round(pct_ast_3pm*fg3m,0),
@@ -544,19 +543,19 @@ mamba_nba <- function(seasons) {
         na.exclude()
     
     # game by game stats in mamba format
-    assign(x = "mamba_all_stats", all_stats, envir = .GlobalEnv)
+    assign(x = "mamba_raw_stats", raw_stats, envir = .GlobalEnv)
     
-    # exponential moving average stats in mamba format
-    assign(x = "mamba_mov_avg", stats_mov_avg, envir = .GlobalEnv)
+    # # exponential moving average stats in mamba format
+    # assign(x = "mamba_mov_avg", stats_mov_avg, envir = .GlobalEnv)
     
     # lagged stats in mamba format - long
-    assign(x = "mamba_lagged_long", stats_lag, envir = .GlobalEnv)
+    assign(x = "mamba_lag_long", stats_lag, envir = .GlobalEnv)
     
     # lagged stats in mamba format - wide
-    assign(x = "mamba_lagged_wide", nba_final, envir = .GlobalEnv)
+    assign(x = "mamba_lag_wide", nba_final, envir = .GlobalEnv)
 }
 
-mamba_nba(2024)
+mamba_nba(2014:2024)
 
 NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db")
 DBI::dbWriteTable(NBAdb, "mamba_stats", mamba, append = T)
@@ -573,7 +572,156 @@ df_check <- mamba %>%
 
 
 #### NBA odds scraper ----
+nba_odds_db <- tbl(NBAdb, "nba_odds") %>%
+    collect() %>%
+    mutate(game_date = as_date(game_date, origin ="1970-01-01"))
 
+season_active <- tbl(NBAdb, "odds_season_active") %>%
+    collect() %>%
+    mutate(game_date = as_date(game_date, origin ="1970-01-01")) %>%
+    filter(game_date < Sys.Date())
+
+missing_dates <- season_active %>%
+    anti_join(nba_odds_db, by = "game_date")
+
+scrape_nba_odds <- function(date_range) {
+    
+    odds_df <- data.frame()
+    
+    for (date_id in date_range) {
+        
+        date_id <- gsub("-", "", as_date(date_id))
+        
+        print(paste0("scraping ", date_id))
+        
+        headers = c(
+            `Sec-Fetch-Site` = "same-site",
+            `Accept` = "application/json",
+            `Origin` = "https://www.actionnetwork.com",
+            `Sec-Fetch-Dest` = "empty",
+            `Accept-Language` = "en-US,en;q=0.9",
+            `Sec-Fetch-Mode` = "cors",
+            `Host` = "api.actionnetwork.com",
+            `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+            `Referer` = "https://www.actionnetwork.com/nba/odds",
+            `Accept-Encoding` = "gzip, deflate, br",
+            `Connection` = "keep-alive"
+        )
+        
+        res <- httr::GET(url = paste0("https://api.actionnetwork.com/web/v2/scoreboard/nba?bookIds=15,30,76,75,123,69,68,972,71,247,79&date=",date_id,"&periods=event"),
+                         httr::add_headers(.headers=headers))
+        
+        json <- res$content %>%
+            rawToChar() %>%
+            jsonlite::fromJSON(simplifyVector = T)
+        
+        odds_game_away <- json$games %>%
+            select(id, season, start_time, away_team_id, home_team_id) %>%
+            rename(event_id = id,
+                   team_id = away_team_id,
+                   opp_team_id = home_team_id) %>%
+            mutate(location = "away")
+        
+        odds_game_home <- json$games %>%
+            select(id, season, start_time, away_team_id, home_team_id) %>%
+            rename(event_id = id,
+                   team_id = home_team_id,
+                   opp_team_id = away_team_id) %>%
+            mutate(location = "home")
+        
+        odds_game_info <- bind_rows(odds_game_away, odds_game_home) %>%
+            mutate(
+                start_time = as_date(format(with_tz(ymd_hms(start_time),
+                                                    tzone = "America/Chicago"),
+                                            "%Y-%m-%d"))
+            ) %>%
+            arrange(event_id, location)
+        
+        remove_standings <- function(team) {
+            team[["standings"]] <- NULL
+            return(team)
+        }
+        
+        json[["games"]][["teams"]] <- lapply(json[["games"]][["teams"]], remove_standings)
+        
+        odds_team_info <- rbindlist(json[["games"]][["teams"]]) %>%
+            select(id, full_name)
+        
+        all_spread <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["spread"]])
+        all_moneyline <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["moneyline"]])
+        all_over_under <- rbindlist(json[["games"]][["markets"]][["15"]][["event"]][["total"]])
+        
+        odds_spread <- all_spread %>%
+            select(event_id, side, value) %>%
+            rename(location = side,
+                   spread = value)
+        
+        odds_spread <- odds_spread %>%
+            left_join(odds_spread,
+                      by = "event_id",
+                      relationship = "many-to-many",
+                      suffix = c("_team", "_opp")) %>%
+            filter(location_team != location_opp) %>%
+            select(-location_opp) %>%
+            rename(location = location_team)
+        
+        odds_moneyline <- all_moneyline %>%
+            select(event_id, side, odds) %>%
+            rename(location = side,
+                   moneyline = odds)
+        
+        odds_moneyline <- odds_moneyline %>%
+            left_join(odds_moneyline,
+                      by = "event_id",
+                      relationship = "many-to-many",
+                      suffix = c("_team", "_opp")) %>%
+            filter(location_team != location_opp) %>%
+            select(-location_opp) %>%
+            rename(location = location_team)
+        
+        odds_totals <- all_over_under %>%
+            select(event_id, value) %>%
+            rename(over_under = value) %>%
+            distinct()
+        
+        odds_clean <- odds_game_info %>%
+            left_join(odds_team_info, by = c("team_id" = "id")) %>%
+            left_join(odds_team_info, by = c("opp_team_id" = "id"),
+                      suffix = c("_team", "_opp")) %>%
+            left_join(odds_spread, by = c("event_id", "location")) %>%
+            left_join(odds_moneyline, by = c("event_id", "location")) %>%
+            left_join(odds_totals, by = c("event_id")) %>%
+            select(-c(event_id, team_id, opp_team_id)) %>%
+            rename(
+                season_year = season,
+                game_date = start_time,
+                team_name = full_name_team,
+                opp_team_name = full_name_opp,
+                team_spread = spread_team,
+                opp_spread = spread_opp,
+                team_moneyline = moneyline_team,
+                opp_moneyline = moneyline_opp
+            )
+        
+        odds_wpo <- odds_clean %>%
+            mutate(team_moneyline = odds.converter::odds.us2dec(team_moneyline),
+                   opp_moneyline = odds.converter::odds.us2dec(opp_moneyline)) %>%
+            select(team_moneyline, opp_moneyline)
+        
+        odds_wpo <- implied::implied_probabilities(odds_wpo, method = 'wpo')
+        
+        odds_final <- odds_clean %>%
+            mutate(team_implied_prob = odds_wpo$probabilities[,1],
+                   opp_implied_prob = odds_wpo$probabilities[,2])
+        
+        odds_df <- bind_rows(odds_df, odds_final)
+        
+    }
+    
+    assign(x = "nba_odds", odds_df, envir = .GlobalEnv)
+}
+
+scrape_nba_odds(missing_dates$game_date)
 
 ## game details ----
 
@@ -695,12 +843,12 @@ nba_scores <- function(seasons) {
                game_id:min, pts, opp_pts, plus_minus)
     
     joined_stats <- all_stats %>%
-        # filter(location == "away") %>%
         left_join(team_games, by = c("game_id", "team_name")) %>%
         left_join(opp_team_games, by = c("game_id", "opp_team_name")) %>%
         select(season_year:opp_pts, plus_minus, game_count_season, opp_game_count_season,
                is_b2b_first, is_b2b_second, opp_is_b2b_first, opp_is_b2b_second) %>%
-        arrange(game_date, game_id, location)
+        arrange(game_date, game_id, location) %>%
+        mutate(min = if_else(min < 48, 48, min))
     
     assign(x = "all_nba_scores", joined_stats, envir = .GlobalEnv)
 }
@@ -846,7 +994,8 @@ scrape_nba_team_stats <- function(seasons) {
     
     nba_final <- team_all_stats %>%
         left_join(team_games, by = c("game_id", "team_name")) %>%
-        arrange(game_date, game_id, location)
+        arrange(game_date, game_id, location) %>%
+        mutate(min = if_else(min < 48, 48, min))
     
     assign(x = "box_scores_team", nba_final, envir = .GlobalEnv)
 }
@@ -1616,7 +1765,7 @@ dbListTables(NBAdb)
 #### MAMBA ----
 # DBI::dbWriteTable(NBAdb, "nba_schedule_current", nba_schedule, overwrite = T)       # automated --- 
 # DBI::dbWriteTable(NBAdb, "mamba_stats", mamba, append = T)                          # automated --- 2014-2023
-# DBI::dbWriteTable(NBAdb, "nba_odds", odds_db, append = T)                           # automated --- 2014-2023
+# DBI::dbWriteTable(NBAdb, "nba_odds", nba_odds, append = T)                          # automated --- 2014-2024
 
 #### Team & Player Stats ----
 # DBI::dbWriteTable(NBAdb, "box_scores_team", box_scores_team, append = T)            # automated --- 1997-2023
@@ -1641,7 +1790,7 @@ dbListTables(NBAdb)
 dbDisconnect(NBAdb)
 
 ## query db
-df <- tbl(NBAdb, "box_scores_team") %>%
+df <- tbl(NBAdb, "mamba_stats") %>%
     collect() %>%
     mutate(game_date = as_date(game_date, origin ="1970-01-01"))
 
