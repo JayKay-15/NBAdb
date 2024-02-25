@@ -385,6 +385,12 @@ mamba_nba <- function(seasons) {
                season_year = as.numeric(substr(season_year, 1, 4)) + 1) %>%
         select(season_year:matchup, location, wl:pct_uast_fgm)
     
+    opp_all_stats <- team_all_stats %>%
+        select(game_id, team_id, team_abbreviation, team_name,
+               fgm:pct_uast_fgm) %>%
+        rename_with(~paste0("opp_", .), -c(game_id)) %>%
+        select(-opp_plus_minus)
+    
     team_games <- team_all_stats %>%
         distinct(season_year, game_id, game_date, team_id, team_name) %>%
         group_by(season_year, team_id) %>%
@@ -415,12 +421,6 @@ mamba_nba <- function(seasons) {
         select(game_id, team_name,
                is_b2b_first, is_b2b_second, game_count_season) %>%
         rename_with(~paste0("opp_", .), -c(game_id))
-    
-    opp_all_stats <- team_all_stats %>%
-        select(game_id, team_id, team_abbreviation, team_name,
-               fgm:pct_uast_fgm) %>%
-        rename_with(~paste0("opp_", .), -c(game_id)) %>%
-        select(-opp_plus_minus)
     
     raw_stats <- team_all_stats %>%
         inner_join(opp_all_stats, by = c("game_id"), relationship = "many-to-many") %>%
@@ -514,6 +514,27 @@ mamba_nba <- function(seasons) {
         ungroup() %>%
         na.exclude()
     
+    base_stats_full <- stats_lag %>%
+        select(season_year:opp_is_b2b_second)
+    
+    team_stats <- stats_lag %>%
+        select(season_year, game_id, team_name, fgm:opp_pct_uast_fgm) %>%
+        rename_with(~paste0("team_", .), fgm:opp_pct_uast_fgm) %>%
+        select(-season_year)
+    
+    opp_stats <- stats_lag %>%
+        select(season_year, game_id, team_name, fgm:opp_pct_uast_fgm) %>%
+        rename_with(~paste0("opp_", .), team_name:opp_pct_uast_fgm) %>%
+        select(-season_year)
+    
+    nba_final_full <- base_stats_full %>%
+        left_join(team_stats, by = c("game_id" = "game_id",
+                                     "team_name" = "team_name")) %>%
+        left_join(opp_stats, by = c("game_id" = "game_id",
+                                     "opp_team_name" = "opp_team_name")) %>%
+        arrange(game_date, game_id, location) %>%
+        na.exclude()
+    
     base_stats <- stats_lag %>%
         filter(location == "away") %>%
         select(season_year:opp_is_b2b_second) %>%
@@ -549,7 +570,7 @@ mamba_nba <- function(seasons) {
     # assign(x = "mamba_mov_avg", stats_mov_avg, envir = .GlobalEnv)
     
     # lagged stats in mamba format - long
-    assign(x = "mamba_lag_long", stats_lag, envir = .GlobalEnv)
+    assign(x = "mamba_lag_long", nba_final_full, envir = .GlobalEnv)
     
     # lagged stats in mamba format - wide
     assign(x = "mamba_lag_wide", nba_final, envir = .GlobalEnv)
@@ -557,19 +578,16 @@ mamba_nba <- function(seasons) {
 
 mamba_nba(2014:2024)
 
-NBAdb <- DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db")
-DBI::dbWriteTable(NBAdb, "mamba_stats", mamba, append = T)
-DBI::dbDisconnect(NBAdb)
+DBI::dbWriteTable(NBAdb, "mamba_raw_stats", mamba_raw_stats, append = T)
+DBI::dbWriteTable(NBAdb, "mamba_lag_long", mamba_lag_long, append = T)
+DBI::dbWriteTable(NBAdb, "mamba_lag_wide", mamba_lag_wide, append = T)
 
-mamba <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "mamba_stats") %>%
+mamba <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "mamba_lag_long") %>%
     collect() %>%
     mutate(game_date = as_date(game_date, origin ="1970-01-01"))
 
 df_check <- mamba %>%
     group_by(season_year) %>% tally()
-
-# saveRDS(nba_final, "./mamba_stats_w15.rds")
-
 
 #### NBA odds scraper ----
 nba_odds_db <- tbl(NBAdb, "nba_odds") %>%
@@ -722,6 +740,66 @@ scrape_nba_odds <- function(date_range) {
 }
 
 scrape_nba_odds(missing_dates$game_date)
+
+#### attach odds to mamba ----
+add_odds <- function() {
+    
+    mamba_raw_stats <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"),
+                           "mamba_raw_stats") %>%
+        collect() %>%
+        mutate(game_date = as_date(game_date, origin ="1970-01-01"))
+    
+    mamba_lag_long <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"),
+                          "mamba_lag_long") %>%
+        collect() %>%
+        mutate(game_date = as_date(game_date, origin ="1970-01-01"))
+    
+    mamba_lag_wide <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"),
+                          "mamba_lag_wide") %>%
+        collect() %>%
+        mutate(game_date = as_date(game_date, origin ="1970-01-01"))
+    
+    odds_db <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"),
+                   "nba_odds") %>%
+        collect() %>%
+        mutate(game_date = as_date(game_date, origin ="1970-01-01"))
+    
+    mamba_raw_odds <- mamba_raw_stats %>%
+        left_join(odds_db %>% select(game_date, team_name,
+                                     team_spread:opp_implied_prob),
+                  by = c("game_date", "team_name")) %>%
+        select(season_year:opp_is_b2b_second,
+               team_spread:opp_implied_prob,
+               fgm:opp_pct_uast_fgm) %>%
+        na.exclude()
+    
+    mamba_long_odds <- mamba_lag_long %>%
+        left_join(odds_db %>% select(game_date, team_name,
+                                     team_spread:opp_implied_prob),
+                  by = c("game_date", "team_name")) %>%
+        select(season_year:opp_is_b2b_second,
+               team_spread:opp_implied_prob,
+               team_fgm:opp_opp_pct_uast_fgm) %>%
+        na.exclude()
+    
+    mamba_wide_odds <- mamba_lag_wide %>%
+        left_join(odds_db %>% select(game_date, team_name,
+                                     team_spread:opp_implied_prob),
+                  by = c("game_date", "away_team_name" = "team_name")) %>%
+        select(season_year:home_is_b2b_second,
+               team_spread:opp_implied_prob,
+               away_fgm:home_opp_pct_uast_fgm) %>%
+        rename_with(~gsub("^team_", "away_", .), starts_with("team_")) %>%
+        rename_with(~gsub("^opp_", "home_", .), starts_with("opp_")) %>%
+        na.exclude()
+    
+    assign(x = "mamba_raw_odds", mamba_raw_odds, envir = .GlobalEnv)
+    assign(x = "mamba_long_odds", mamba_long_odds, envir = .GlobalEnv)
+    assign(x = "mamba_wide_odds", mamba_wide_odds, envir = .GlobalEnv)
+    
+}
+
+add_odds()
 
 ## game details ----
 
@@ -1764,8 +1842,14 @@ dbListTables(NBAdb)
 
 #### MAMBA ----
 # DBI::dbWriteTable(NBAdb, "nba_schedule_current", nba_schedule, overwrite = T)       # automated --- 
-# DBI::dbWriteTable(NBAdb, "mamba_stats", mamba, append = T)                          # automated --- 2014-2023
 # DBI::dbWriteTable(NBAdb, "nba_odds", nba_odds, append = T)                          # automated --- 2014-2024
+# DBI::dbWriteTable(NBAdb, "mamba_raw_stats", mamba_raw_stats, overwrite = T)         # automated --- 2014-2023
+# DBI::dbWriteTable(NBAdb, "mamba_lag_long", mamba_lag_long, overwrite = T)           # automated --- 2014-2023
+# DBI::dbWriteTable(NBAdb, "mamba_lag_wide", mamba_lag_wide, overwrite = T)           # automated --- 2014-2023
+
+
+
+
 
 #### Team & Player Stats ----
 # DBI::dbWriteTable(NBAdb, "box_scores_team", box_scores_team, append = T)            # automated --- 1997-2023
@@ -1790,7 +1874,7 @@ dbListTables(NBAdb)
 dbDisconnect(NBAdb)
 
 ## query db
-df <- tbl(NBAdb, "mamba_stats") %>%
+df <- tbl(NBAdb, "nba_odds") %>%
     collect() %>%
     mutate(game_date = as_date(game_date, origin ="1970-01-01"))
 
@@ -1841,6 +1925,22 @@ df <- tbl(NBAdb, "mamba_stats") %>%
 # 
 # # rename new data by remove "_tmp"
 # DBI::dbExecute(con, "ALTER TABLE flights_tmp RENAME TO flights;")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
