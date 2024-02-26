@@ -661,18 +661,74 @@ json <- res$content %>%
     jsonlite::fromJSON(simplifyVector = T)
 
 
+#### Matchups ----
+headers = c(
+    `Sec-Fetch-Site` = "same-site",
+    `Accept` = "*/*",
+    `Origin` = "https://www.nba.com",
+    `Sec-Fetch-Dest` = "empty",
+    `Accept-Language` = "en-US,en;q=0.9",
+    `Sec-Fetch-Mode` = "cors",
+    `Host` = "stats.nba.com",
+    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+    `Referer` = "https://www.nba.com/",
+    `Accept-Encoding` = "gzip, deflate, br",
+    `Connection` = "keep-alive"
+)
+
+params = list(
+    `DateFrom` = "",
+    `DateTo` = "",
+    `DefPlayerID` = "1629008",
+    `DefTeamID` = "",
+    `LeagueID` = "00",
+    `Matchup` = "Defense",
+    `OffPlayerID` = "",
+    `OffTeamID` = "",
+    `Outcome` = "",
+    `PORound` = "0",
+    `PerMode` = "Totals",
+    `Season` = "2023-24",
+    `SeasonType` = "Regular Season"
+)
+
+res <- httr::GET(url = "https://stats.nba.com/stats/leagueseasonmatchups",
+                 httr::add_headers(.headers=headers), query = params)
+
+data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
+column_names <- data$headers %>% as.character()  
+dt <- rbindlist(data$rowSet) %>% setnames(column_names) %>% clean_names()
 
 
 
 
 
+##### player props ----
+headers = c(
+    `Sec-Fetch-Site` = "same-site",
+    `Accept` = "application/json",
+    `Origin` = "https://www.actionnetwork.com",
+    `Sec-Fetch-Dest` = "empty",
+    `Accept-Language` = "en-US,en;q=0.9",
+    `Sec-Fetch-Mode` = "cors",
+    `Host` = "api.actionnetwork.com",
+    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+    `Referer` = "https://www.actionnetwork.com/nba/props/game-props",
+    `Accept-Encoding` = "gzip, deflate, br",
+    `Connection` = "keep-alive"
+)
 
+params = list(
+    `date` = "20240225",
+    `periods` = "event"
+)
 
+res <- httr::GET(url = "https://api.actionnetwork.com/web/v2/scoreboard/nba",
+                 httr::add_headers(.headers=headers), query = params)
 
-
-
-
-
+json <- res$content %>%
+    rawToChar() %>%
+    jsonlite::fromJSON(simplifyVector = T)
 
 
 
