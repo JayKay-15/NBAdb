@@ -1843,13 +1843,12 @@ dbListTables(NBAdb)
 #### MAMBA ----
 # DBI::dbWriteTable(NBAdb, "nba_schedule_current", nba_schedule, overwrite = T)       # automated --- 
 # DBI::dbWriteTable(NBAdb, "nba_odds", nba_odds, append = T)                          # automated --- 2014-2024
-# DBI::dbWriteTable(NBAdb, "mamba_raw_stats", mamba_raw_stats, overwrite = T)         # automated --- 2014-2023
-# DBI::dbWriteTable(NBAdb, "mamba_lag_long", mamba_lag_long, overwrite = T)           # automated --- 2014-2023
-# DBI::dbWriteTable(NBAdb, "mamba_lag_wide", mamba_lag_wide, overwrite = T)           # automated --- 2014-2023
-
-
-
-
+# DBI::dbWriteTable(NBAdb, "mamba_raw_stats", mamba_raw_stats, append = T)            # automated --- 2014-2024
+# DBI::dbWriteTable(NBAdb, "mamba_lag_long", mamba_lag_long, append = T)              # automated --- 2014-2024
+# DBI::dbWriteTable(NBAdb, "mamba_lag_wide", mamba_lag_wide, append = T)              # automated --- 2014-2024
+# DBI::dbWriteTable(NBAdb, "mamba_raw_odds", mamba_raw_odds, append = T)              # automated --- 2014-2024
+# DBI::dbWriteTable(NBAdb, "mamba_long_odds", mamba_long_odds, append = T)            # automated --- 2014-2024
+# DBI::dbWriteTable(NBAdb, "mamba_wide_odds", mamba_wide_odds, append = T)            # automated --- 2014-2024
 
 #### Team & Player Stats ----
 # DBI::dbWriteTable(NBAdb, "box_scores_team", box_scores_team, append = T)            # automated --- 1997-2023
