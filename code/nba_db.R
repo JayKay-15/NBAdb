@@ -435,6 +435,15 @@ mamba_nba <- function(seasons) {
                fgm:opp_pct_uast_fgm) %>%
         arrange(game_date, game_id, location)
     
+    mamba_pace_adj <- raw_stats %>%
+        select(season_year, game_date, pace) %>%
+        group_by(game_date) %>%
+        summarize(sum_pace = sum(pace),
+                  num_row = n()) %>%
+        mutate(pace_adj = cumsum(sum_pace)/cumsum(num_row)) %>%
+        ungroup() %>%
+        select(game_date, pace_adj)
+    
     stats_mov_avg <- raw_stats %>%
         mutate(pts_2pt_mr = round(pct_pts_2pt_mr*pts,0),
                ast_2pm = round(pct_ast_2pm*(fgm-fg3m),0),
@@ -443,9 +452,11 @@ mamba_nba <- function(seasons) {
                opp_ast_2pm = round(opp_pct_ast_2pm*(opp_fgm-opp_fg3m),0),
                opp_ast_3pm = round(opp_pct_ast_3pm*opp_fg3m,0)
         ) %>%
+        left_join(mamba_pace_adj) %>%
         group_by(season_year, team_id, location) %>%
-        mutate(across(c(fgm:opp_pct_uast_fgm),
-                      \(x) pracma::movavg(x, n = 15, type = 'e'))
+        mutate(across(c(fgm:opp_pct_uast_fgm), ~ . * (pace_adj/pace)),
+               across(c(fgm:opp_pct_uast_fgm),
+                      \(x) pracma::movavg(x, n = 10, type = 'e'))
         ) %>%
         ungroup() %>%
         mutate(fg_pct = fgm/fga,
@@ -503,11 +514,6 @@ mamba_nba <- function(seasons) {
         select(-c(pts_2pt_mr, ast_2pm, ast_3pm,
                   opp_pts_2pt_mr, opp_ast_2pm, opp_ast_3pm))
     
-    # odds_df <- dplyr::tbl(DBI::dbConnect(RSQLite::SQLite(), "../nba_sql_db/nba_db"),
-    #                       "nba_odds") %>% 
-    #     collect() %>%
-    #     select(game_id, away_spread:home_implied_prob)
-    
     stats_lag <- stats_mov_avg %>%
         group_by(season_year, team_name, location) %>%
         mutate(across(fgm:opp_pct_uast_fgm, \(x) lag(x, n = 1))) %>%
@@ -534,6 +540,7 @@ mamba_nba <- function(seasons) {
                                      "opp_team_name" = "opp_team_name")) %>%
         arrange(game_date, game_id, location) %>%
         na.exclude()
+    
     
     base_stats <- stats_lag %>%
         filter(location == "away") %>%
@@ -566,9 +573,6 @@ mamba_nba <- function(seasons) {
     # game by game stats in mamba format
     assign(x = "mamba_raw_stats", raw_stats, envir = .GlobalEnv)
     
-    # # exponential moving average stats in mamba format
-    # assign(x = "mamba_mov_avg", stats_mov_avg, envir = .GlobalEnv)
-    
     # lagged stats in mamba format - long
     assign(x = "mamba_lag_long", nba_final_full, envir = .GlobalEnv)
     
@@ -576,7 +580,7 @@ mamba_nba <- function(seasons) {
     assign(x = "mamba_lag_wide", nba_final, envir = .GlobalEnv)
 }
 
-mamba_nba(2014:2024)
+mamba_nba(2020:2024)
 
 DBI::dbWriteTable(NBAdb, "mamba_raw_stats", mamba_raw_stats, append = T)
 DBI::dbWriteTable(NBAdb, "mamba_lag_long", mamba_lag_long, append = T)
@@ -1873,45 +1877,11 @@ dbListTables(NBAdb)
 dbDisconnect(NBAdb)
 
 ## query db
-df <- tbl(NBAdb, "nba_odds") %>%
+df <- tbl(NBAdb, "mamba_raw_stats") %>%
     collect() %>%
     mutate(game_date = as_date(game_date, origin ="1970-01-01"))
 
 
-
-## checking for missing games
-# df2 <- unique(df$idGame)
-# df3 <- unique(team_logs$idGame)
-# # df3 <- unique(games$idGame)
-# df4 <- df3[!df3 %in% df2]
-# 
-# df5 <- unique(df[c("idGame","idTeam")])
-# df6 <- unique(team_logs[c("idGame","idTeam")])
-# df7 <- df5[!df5 %in% df6]
-
-
-## check for duplicates
-# sum(duplicated(df))
-
-# play_logs_all <- unique(df)
-
-
-## filtering for specific season
-# tm <- df %>%
-#     filter(substr(idGame, 1,3) == 221)
-
-
-## concatenate to see what else is missing from TeamShots - *** all active teams?? try this
-# df_check <- df %>%
-#     mutate(checker = paste(idGame,idTeam, sep="_"))
-# team_logs_check <- team_logs %>%
-#     mutate(checker = paste(idGame,idTeam, sep="_"))
-# 
-# df10 <- unique(df_check$checker)
-# df11 <- unique(team_logs_check$checker)
-# 
-# df12 <- df11[!df11 %in% df10]
-# df12
 
 
 # # rename tables
@@ -1924,18 +1894,6 @@ df <- tbl(NBAdb, "nba_odds") %>%
 # 
 # # rename new data by remove "_tmp"
 # DBI::dbExecute(con, "ALTER TABLE flights_tmp RENAME TO flights;")
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2188,6 +2146,15 @@ odds_db <- new_odds %>%
 df_check <- df %>%
     group_by(season_year) %>%
     tally()
+
+
+
+
+
+
+
+
+
 
 
 
