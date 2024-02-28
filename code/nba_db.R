@@ -4,7 +4,6 @@ library(tidyverse)
 library(janitor)
 library(data.table) 
 library(nbastatR)
-library(hoopR)
 library(RSQLite)
 library(DBI)
 
@@ -435,14 +434,14 @@ mamba_nba <- function(seasons) {
                fgm:opp_pct_uast_fgm) %>%
         arrange(game_date, game_id, location)
     
-    mamba_pace_adj <- raw_stats %>%
-        select(season_year, game_date, pace) %>%
-        group_by(game_date) %>%
-        summarize(sum_pace = sum(pace),
-                  num_row = n()) %>%
-        mutate(pace_adj = cumsum(sum_pace)/cumsum(num_row)) %>%
-        ungroup() %>%
-        select(game_date, pace_adj)
+    # mamba_pace_adj <- raw_stats %>%
+    #     select(season_year, game_date, pace) %>%
+    #     group_by(game_date) %>%
+    #     summarize(sum_pace = sum(pace),
+    #               num_row = n()) %>%
+    #     mutate(pace_adj = cumsum(sum_pace)/cumsum(num_row)) %>%
+    #     ungroup() %>%
+    #     select(game_date, pace_adj)
     
     stats_mov_avg <- raw_stats %>%
         mutate(pts_2pt_mr = round(pct_pts_2pt_mr*pts,0),
@@ -452,11 +451,13 @@ mamba_nba <- function(seasons) {
                opp_ast_2pm = round(opp_pct_ast_2pm*(opp_fgm-opp_fg3m),0),
                opp_ast_3pm = round(opp_pct_ast_3pm*opp_fg3m,0)
         ) %>%
-        left_join(mamba_pace_adj) %>%
+        # left_join(mamba_pace_adj) %>%
         group_by(season_year, team_id, location) %>%
-        mutate(across(c(fgm:opp_pct_uast_fgm), ~ . * (pace_adj/pace)),
-               across(c(fgm:opp_pct_uast_fgm),
+        mutate(across(c(fgm:opp_pct_uast_fgm),
                       \(x) pracma::movavg(x, n = 10, type = 'e'))
+        # mutate(across(c(fgm:opp_pct_uast_fgm), ~ . * (pace_adj/pace)),
+        #        across(c(fgm:opp_pct_uast_fgm),
+        #               \(x) pracma::movavg(x, n = 10, type = 'e'))
         ) %>%
         ungroup() %>%
         mutate(fg_pct = fgm/fga,
@@ -1847,12 +1848,12 @@ dbListTables(NBAdb)
 #### MAMBA ----
 # DBI::dbWriteTable(NBAdb, "nba_schedule_current", nba_schedule, overwrite = T)       # automated --- 
 # DBI::dbWriteTable(NBAdb, "nba_odds", nba_odds, append = T)                          # automated --- 2014-2024
-# DBI::dbWriteTable(NBAdb, "mamba_raw_stats", mamba_raw_stats, append = T)            # automated --- 2014-2024
-# DBI::dbWriteTable(NBAdb, "mamba_lag_long", mamba_lag_long, append = T)              # automated --- 2014-2024
-# DBI::dbWriteTable(NBAdb, "mamba_lag_wide", mamba_lag_wide, append = T)              # automated --- 2014-2024
-# DBI::dbWriteTable(NBAdb, "mamba_raw_odds", mamba_raw_odds, append = T)              # automated --- 2014-2024
-# DBI::dbWriteTable(NBAdb, "mamba_long_odds", mamba_long_odds, append = T)            # automated --- 2014-2024
-# DBI::dbWriteTable(NBAdb, "mamba_wide_odds", mamba_wide_odds, append = T)            # automated --- 2014-2024
+# DBI::dbWriteTable(NBAdb, "mamba_raw_stats", mamba_raw_stats, append = T)            # automated --- 2020-2024
+# DBI::dbWriteTable(NBAdb, "mamba_lag_long", mamba_lag_long, append = T)              # automated --- 2020-2024
+# DBI::dbWriteTable(NBAdb, "mamba_lag_wide", mamba_lag_wide, append = T)              # automated --- 2020-2024
+# DBI::dbWriteTable(NBAdb, "mamba_raw_odds", mamba_raw_odds, append = T)              # automated --- 2020-2024
+# DBI::dbWriteTable(NBAdb, "mamba_long_odds", mamba_long_odds, append = T)            # automated --- 2020-2024
+# DBI::dbWriteTable(NBAdb, "mamba_wide_odds", mamba_wide_odds, append = T)            # automated --- 2020-2024
 
 #### Team & Player Stats ----
 # DBI::dbWriteTable(NBAdb, "box_scores_team", box_scores_team, append = T)            # automated --- 1997-2023
