@@ -1325,9 +1325,44 @@ starter_fic <- read_csv("/Users/jesse/Desktop/starter_fic.csv")
 
 
 
+library(httr)
 
+cookies = c(
+    `_ga_QXY5NYRE7Q` = "GS1.1.1710371796.1.1.1710372547.0.0.0",
+    `_fbp` = "fb.1.1710371798299.41060252",
+    `__ar_v4` = "2YUP7TATPFC7XD6D2GIARW:20240312:4|ZUS4OCBXGBDWLCGQSOCSQN:20240312:4|NHFCO3TELVGCHHJD5FHXVD:20240312:4",
+    `__adroll_fpc` = "71377bd5f4feede28e5a7c76dfcff7c7-1710371796991",
+    `_ga` = "GA1.1.803358876.1710371796",
+    `ASP.NET_SessionId` = "scocfpdfj2z2dwykskr1jugd",
+    `ks03ndsapqq84662kglvmcya009273nhdkwsn` = "43a2229d-4da2-4968-b541-c15df7f6c4f8"
+)
 
+headers = c(
+    `Content-Type` = "application/json;charset=utf-8",
+    `Accept` = "application/json, text/plain, */*",
+    `Sec-Fetch-Site` = "same-origin",
+    `Accept-Language` = "en-US,en;q=0.9",
+    `Accept-Encoding` = "gzip, deflater",
+    `Sec-Fetch-Mode` = "cors",
+    `Host` = "bettingdata.com",
+    `Origin` = "https://bettingdata.com",
+    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+    `Referer` = "https://bettingdata.com/nba/odds?scope=1&subscope=1&season=2024&seasontype=1&date=03-13-2024&teamkey=ATL&client=1&state=WORLD&league=nba&widget_scope=1",
+    `Content-Length` = "258",
+    `Connection` = "keep-alive",
+    `Sec-Fetch-Dest` = "empty"
+)
 
+data = '{"filters":{"scope":1,"subscope":1,"week":null,"season":2024,"seasontype":1,"team":null,"conference":null,"exportType":null,"date":"03-13-2024","teamkey":"ATL","show_no_odds":false,"client":1,"state":"WORLD","geo_state":null,"league":"nba","widget_scope":1}}'
+
+res <- httr::POST(url = "https://bettingdata.com/NBA_Odds/Odds_Read", httr::add_headers(.headers=headers), httr::set_cookies(.cookies = cookies), body = data)
+
+json <- res$content %>% rawToChar() %>% jsonlite::fromJSON(simplifyVector = T)
+
+starters <- json$games %>%
+    data.frame(stringsAsFactors = F) %>%
+    as_tibble() %>%
+    select(gameId:gameStatusText)
 
 
 
