@@ -1367,3 +1367,103 @@ starters <- json$games %>%
 
 
 
+# WNBA ----
+headers = c(
+    `Accept` = "application/json, text/plain, */*",
+    `Sec-Fetch-Site` = "same-origin",
+    `Accept-Encoding` = "gzip, deflate, br",
+    `Accept-Language` = "en-US,en;q=0.9",
+    `Sec-Fetch-Mode` = "cors",
+    `Host` = "stats.wnba.com",
+    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+    `Referer` = "https://stats.wnba.com/teams/boxscores-traditional/",
+    `Connection` = "keep-alive",
+    `Sec-Fetch-Dest` = "empty",
+    `x-nba-stats-origin` = "stats",
+    `x-nba-stats-token` = "true"
+)
+
+params = list(
+    `DateFrom` = "",
+    `DateTo` = "",
+    `GameSegment` = "",
+    `LastNGames` = "0",
+    `LeagueID` = "10",
+    `Location` = "",
+    `MeasureType` = "Advanced",
+    `Month` = "0",
+    `OpponentTeamID` = "0",
+    `Outcome` = "",
+    `PORound` = "0",
+    `PaceAdjust` = "N",
+    `PerMode` = "Totals",
+    `Period` = "0",
+    `PlusMinus` = "N",
+    `Rank` = "N",
+    `Season` = "2023",
+    `SeasonSegment` = "",
+    `SeasonType` = "Regular Season",
+    `ShotClockRange` = "",
+    `VsConference` = "",
+    `VsDivision` = ""
+)
+
+res <- httr::GET(url = "https://stats.wnba.com/stats/teamgamelogs",
+                 httr::add_headers(.headers=headers),
+                 query = params)
+
+data <- httr::content(res) %>% .[["resultSets"]] %>% .[[1]]
+column_names <- data$headers %>% as.character()
+dt <- rbindlist(data$rowSet) %>% setnames(column_names)
+
+
+
+headers = c(
+    `Accept` = "application/json, text/plain, */*",
+    `Sec-Fetch-Site` = "same-origin",
+    `Accept-Encoding` = "gzip, deflate, br",
+    `Accept-Language` = "en-US,en;q=0.9",
+    `Sec-Fetch-Mode` = "cors",
+    `Host` = "stats.wnba.com",
+    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+    `Referer` = "https://stats.wnba.com/teams/boxscores-advanced/",
+    `Connection` = "keep-alive",
+    `Sec-Fetch-Dest` = "empty",
+    `x-nba-stats-origin` = "stats",
+    `x-nba-stats-token` = "true"
+)
+
+params = list(
+    `DateFrom` = "",
+    `DateTo` = "",
+    `GameSegment` = "",
+    `LastNGames` = "0",
+    `LeagueID` = "10",
+    `Location` = "",
+    `MeasureType` = "Base",
+    `Month` = "0",
+    `OpponentTeamID` = "0",
+    `Outcome` = "",
+    `PORound` = "0",
+    `PaceAdjust` = "N",
+    `PerMode` = "Totals",
+    `Period` = "0",
+    `PlusMinus` = "N",
+    `Rank` = "N",
+    `Season` = "2023",
+    `SeasonSegment` = "",
+    `SeasonType` = "Regular Season",
+    `ShotClockRange` = "",
+    `VsConference` = "",
+    `VsDivision` = ""
+)
+
+res <- httr::GET(url = "https://stats.wnba.com/stats/teamgamelogs",
+                 httr::add_headers(.headers=headers), query = params)
+
+data <- httr::content(res) %>% .[["resultSets"]] %>% .[[1]]
+column_names <- data$headers %>% as.character()
+dt <- rbindlist(data$rowSet) %>% setnames(column_names)
+
+data <- httr::content(res, type = 'raw')
+
