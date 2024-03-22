@@ -581,7 +581,7 @@ mamba_nba <- function(seasons) {
     assign(x = "mamba_lag_wide", nba_final, envir = .GlobalEnv)
 }
 
-mamba_nba(2020:2024)
+mamba_nba(2014:2024)
 
 DBI::dbWriteTable(NBAdb, "mamba_raw_stats", mamba_raw_stats, append = T)
 DBI::dbWriteTable(NBAdb, "mamba_lag_long", mamba_lag_long, append = T)
@@ -643,14 +643,16 @@ scrape_nba_odds <- function(date_range) {
             rename(event_id = id,
                    team_id = away_team_id,
                    opp_team_id = home_team_id) %>%
-            mutate(location = "away")
+            mutate(location = "away",
+                   season = season + 1)
         
         odds_game_home <- json$games %>%
             select(id, season, start_time, away_team_id, home_team_id) %>%
             rename(event_id = id,
                    team_id = home_team_id,
                    opp_team_id = away_team_id) %>%
-            mutate(location = "home")
+            mutate(location = "home",
+                   season = season + 1)
         
         odds_game_info <- bind_rows(odds_game_away, odds_game_home) %>%
             mutate(
@@ -2147,21 +2149,6 @@ odds_db <- new_odds %>%
 df_check <- df %>%
     group_by(season_year) %>%
     tally()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
