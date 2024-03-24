@@ -1848,7 +1848,7 @@ NBAdb <- dbConnect(SQLite(), "../nba_sql_db/nba_db")
 dbListTables(NBAdb)
 
 #### MAMBA ----
-# DBI::dbWriteTable(NBAdb, "nba_schedule_current", nba_schedule, overwrite = T)       # automated --- 
+# DBI::dbWriteTable(NBAdb, "nba_schedule_current", nba_schedule, overwrite = T)       # automated ---
 # DBI::dbWriteTable(NBAdb, "nba_odds", nba_odds, append = T)                          # automated --- 2014-2024
 # DBI::dbWriteTable(NBAdb, "mamba_raw_stats", mamba_raw_stats, append = T)            # automated --- 2020-2024
 # DBI::dbWriteTable(NBAdb, "mamba_lag_long", mamba_lag_long, append = T)              # automated --- 2020-2024
