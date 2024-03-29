@@ -3,7 +3,7 @@ library(data.table)
 library(janitor)
 library(magrittr)
 
-#### Scrape a single stat and year ----
+#### Scrape a single stat and year - teamgamelogs ----
 # Define common headers and parameters
 headers = c(
     `Sec-Fetch-Site` = "same-site",
@@ -52,7 +52,7 @@ column_names <- data$headers %>% as.character()
 dt <- rbindlist(data$rowSet) %>% setnames(column_names)
 
 
-#### Scrape a single stat category loop years ----
+#### Scrape a single stat category loop years - teamgamelogs ----
 # Define common headers and parameters
 headers = c(
     `Sec-Fetch-Site` = "same-site",
@@ -130,7 +130,7 @@ for (year in start_year:end_year) {
 # Now, 'all_data' contains data for all the years from 1996-97 to 2022-23
 
 
-#### Scrape all stat categories loop years ----
+#### Scrape all stat categories loop years - teamgamelogs ----
 # Define common headers and parameters
 headers = c(
     `Sec-Fetch-Site` = "same-site",
@@ -219,7 +219,7 @@ for (measure_type in measure_types) {
 saveRDS(all_data_list, file = "team_stats_list.rds")
 
 
-#### Scrape a single stat and year ----
+#### Scrape a single stat and year - playergamelogs ----
 # Define common headers and parameters
 headers = c(
     `Sec-Fetch-Site` = "same-site",
@@ -268,7 +268,7 @@ column_names <- data$headers %>% as.character()
 dt <- rbindlist(data$rowSet) %>% setnames(column_names)
 
 
-#### Scrape a single stat category loop years ----
+#### Scrape a single stat category loop years - playergamelogs ----
 # Define common headers and parameters
 headers = c(
     `Sec-Fetch-Site` = "same-site",
@@ -346,7 +346,7 @@ for (year in start_year:end_year) {
 
 
 
-#### Scrape all stat categories loop years ----
+#### Scrape all stat categories loop years - playergamelogs ----
 # Define common headers and parameters
 headers = c(
     `Sec-Fetch-Site` = "same-site",
@@ -442,7 +442,7 @@ saveRDS(all_data_list, file = "player_stats_list.rds")
 
 
 
-### Team Tracking
+### Team Tracking -- loop to scrape each day
 headers = c(
     `Accept` = '*/*',
     `Origin` = 'https://www.nba.com',
@@ -454,141 +454,52 @@ headers = c(
     `Connection` = 'keep-alive'
 )
 
-# headers = c(
-#     `Origin` = 'https://www.nba.com',
-#     `Referer` = 'https://www.nba.com/',
-#     `Accept` = '*/*',
-#     `User-Agent` = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15'
-# )
-
-
-sched <- nbastatR::game_logs(seasons = 2023,
-                             result_types = "team",
-                             season_types = "Regular Season") %>%
-    select(5) %>%
-    distinct()
-
-# test <- seq(as.Date("2021-10-18"), as.Date("2022-10-19"), by="days")
-gm_df <- format(sched$dateGame, "%m/%d/%Y")
-
-
-df <- data.frame()
-
-i <- 1
-h <- length(gm_df)
-
-for (i in i:h) {
-    
-    g <- gm_df[i]
-    
-    params = list(
-        `College` = '',
-        `Conference` = '',
-        `Country` = '',
-        `DateFrom` = g,
-        `DateTo` = g,
-        `Division` = '',
-        `DraftPick` = '',
-        `DraftYear` = '',
-        `GameScope` = '',
-        `Height` = '',
-        `LastNGames` = '0',
-        `LeagueID` = '00',
-        `Location` = '',
-        `Month` = '0',
-        `OpponentTeamID` = '0',
-        `Outcome` = '',
-        `PORound` = '0',
-        `PerMode` = 'PerGame',
-        `PlayerExperience` = '',
-        `PlayerOrTeam` = 'Team',
-        `PlayerPosition` = '',
-        `PtMeasureType` = 'Rebounding',
-        `Season` = '2022-23',
-        `SeasonSegment` = '',
-        `SeasonType` = 'Regular Season',
-        `StarterBench` = '',
-        `TeamID` = '0',
-        `VsConference` = '',
-        `VsDivision` = '',
-        `Weight` = ''
-    )
-    
-    res <- httr::GET(url = 'https://stats.nba.com/stats/leaguedashptstats', httr::add_headers(.headers=headers), query = params)
-    data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
-    column_names <- data$headers %>% as.character()  
-    dt <- rbindlist(data$rowSet) %>% setnames(column_names) %>% mutate(date = as_date(params[["DateFrom"]], format = "%m/%d/%Y"))
-    print(params[["DateFrom"]])
-    
-    df <- bind_rows(df, dt)
-    
-}
-
-openxlsx::write.xlsx(df, file = "./output/rebounding.xlsx")
-
-#####
-
-### Team Playtype
-headers = c(
-    `Accept` = '*/*',
-    `Origin` = 'https://www.nba.com',
-    `Accept-Encoding` = 'gzip, deflate, br',
-    `Host` = 'stats.nba.com',
-    `User-Agent` = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15',
-    `Accept-Language` = 'en-US,en;q=0.9',
-    `Referer` = 'https://www.nba.com/',
-    `Connection` = 'keep-alive'
-)
 
 params = list(
-        `LeagueID` = '00',
-        `PerMode` = 'PerGame',
-        `PlayType` = 'Isolation',
-        `PlayerOrTeam` = 'T',
-        `SeasonType` = 'Regular Season',
-        `SeasonYear` = '2021-22',
-        `TypeGrouping` = 'offensive'
-)
-
-res <- httr::GET(url = 'https://stats.nba.com/stats/synergyplaytypes', httr::add_headers(.headers=headers), query = params)
-data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
-column_names <- data$headers %>% as.character()  
-dt <- rbindlist(data$rowSet) %>% setnames(column_names)
-
-openxlsx::write.xlsx(dt, file = "./output/isolation_off.xlsx")
-
-#####
-
-### Player Tracking
-headers = c(
-    `Accept` = '*/*',
-    `Origin` = 'https://www.nba.com',
-    `Accept-Encoding` = 'gzip, deflate, br',
-    `Host` = 'stats.nba.com',
-    `User-Agent` = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15',
-    `Accept-Language` = 'en-US,en;q=0.9',
-    `Referer` = 'https://www.nba.com/',
-    `Connection` = 'keep-alive'
-)
-
-params = list(
+    `College` = '',
+    `Conference` = '',
+    `Country` = '',
+    `DateFrom` = "02/25/2024",
+    `DateTo` = "02/25/2024",
+    `Division` = '',
+    `DraftPick` = '',
+    `DraftYear` = '',
+    `GameScope` = '',
+    `Height` = '',
+    `LastNGames` = '0',
     `LeagueID` = '00',
-    `PerMode` = 'PerGame',
-    `PlayType` = 'Isolation',
-    `PlayerOrTeam` = 'T',
+    `Location` = '',
+    `Month` = '0',
+    `OpponentTeamID` = '0',
+    `Outcome` = '',
+    `PORound` = '0',
+    `PerMode` = "PerGame",
+    `PlayerExperience` = "",
+    `PlayerOrTeam` = "Team",
+    `PlayerPosition` = "",
+    `PtMeasureType` = "Efficiency",
+    `Season` = "2023-24",
+    `SeasonSegment` = '',
     `SeasonType` = 'Regular Season',
-    `SeasonYear` = '2021-22',
-    `TypeGrouping` = 'offensive'
+    `StarterBench` = '',
+    `TeamID` = '0',
+    `VsConference` = '',
+    `VsDivision` = '',
+    `Weight` = ''
 )
 
-res <- httr::GET(url = 'https://stats.nba.com/stats/synergyplaytypes', httr::add_headers(.headers=headers), query = params)
+
+res <- httr::GET(url = 'https://stats.nba.com/stats/leaguedashptstats',
+                 httr::add_headers(.headers=headers), query = params)
+
 data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
 column_names <- data$headers %>% as.character()  
-dt <- rbindlist(data$rowSet) %>% setnames(column_names)
+dt <- rbindlist(data$rowSet) %>%
+    setnames(column_names) %>%
+    clean_names()
 
-openxlsx::write.xlsx(dt, file = "./output/isolation_off.xlsx")
 
-#####
+
 
 ### Player Play Type
 headers = c(
@@ -612,19 +523,13 @@ params = list(
     `TypeGrouping` = 'offensive'
 )
 
-res <- httr::GET(url = 'https://stats.nba.com/stats/synergyplaytypes', httr::add_headers(.headers=headers), query = params)
+res <- httr::GET(url = 'https://stats.nba.com/stats/synergyplaytypes',
+                 httr::add_headers(.headers=headers), query = params)
+
 data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
 column_names <- data$headers %>% as.character()  
-dt <- rbindlist(data$rowSet) %>% setnames(column_names)
+dt <- rbindlist(data$rowSet) %>% setnames(column_names) %>% clean_names()
 
-openxlsx::write.xlsx(dt, file = "./output/isolation_off.xlsx")
-
-
-
-# json <-
-#     res$content %>%
-#     rawToChar() %>%
-#     jsonlite::fromJSON(simplifyVector = T)
 
 
 
@@ -641,8 +546,8 @@ headers = c(
     `Referer` = "https://www.nba.com/",
     `Accept-Encoding` = "gzip, deflate, br",
     `Connection` = "keep-alive"
-    )
- 
+)
+
 params = list(
     `GameID` = "0022300345",
     `LeagueID` = "00",
@@ -651,7 +556,7 @@ params = list(
     `rangeType` = "0",
     `startPeriod` = "0",
     `startRange` = "0"
-    )
+)
 
 res <- httr::GET(url = "https://stats.nba.com/stats/boxscorehustlev2",
                  httr::add_headers(.headers=headers), query = params)
@@ -679,7 +584,7 @@ headers = c(
 params = list(
     `DateFrom` = "",
     `DateTo` = "",
-    `DefPlayerID` = "1629008",
+    `DefPlayerID` = "",
     `DefTeamID` = "",
     `LeagueID` = "00",
     `Matchup` = "Defense",
@@ -924,7 +829,7 @@ scrape_nba_odds <- function(date_range) {
             left_join(odds_totals, by = "event_id") %>%
             mutate(
                 start_time = as_date(format(with_tz(ymd_hms(start_time),
-                                            tzone = "America/Chicago"),
+                                                    tzone = "America/Chicago"),
                                             "%Y-%m-%d"))
             ) %>%
             rename(
@@ -955,7 +860,7 @@ scrape_nba_odds <- function(date_range) {
         odds_df <- bind_rows(odds_df, odds_final)
         
     }
-
+    
     assign(x = "nba_odds", odds_df, envir = .GlobalEnv)
 }
 
@@ -1115,7 +1020,7 @@ scrape_nba_odds <- function(date_range) {
             filter(location_team != location_opp) %>%
             select(-location_opp) %>%
             rename(location = location_team)
-            
+        
         odds_moneyline <- all_moneyline %>%
             select(event_id, side, odds) %>%
             rename(location = side,
@@ -1254,7 +1159,7 @@ mamba_fic <- df %>%
     select(game_date, game_id, team_id, team_name, 
            player_id, player_name, location, fic, fic40) %>%
     na.exclude()
-    
+
 
 
 nba_final <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"), "mamba_stats") %>%
@@ -1283,7 +1188,7 @@ lineup_2023 <- read_rds("../nba_in_R/nba_pbp_data-main/lineup-final2023/data.rds
 
 
 all_lineups <- bind_rows(lineup_2014, lineup_2016, lineup_2017, lineup_2018,
-                     lineup_2019, lineup_2020, lineup_2021, lineup_2022, lineup_2023)
+                         lineup_2019, lineup_2020, lineup_2021, lineup_2022, lineup_2023)
 
 lineups <- bind_rows(lineup_2019, lineup_2020, lineup_2021, lineup_2022, lineup_2023) %>%
     filter(period == 1 & stint == 1) %>%
@@ -1318,152 +1223,4 @@ write_csv(starter_fic, "/Users/jesse/Desktop/starter_fic.csv")
 
 starter_fic <- read_csv("/Users/jesse/Desktop/starter_fic.csv")
 
-
-    
-
-
-
-
-
-library(httr)
-
-cookies = c(
-    `_ga_QXY5NYRE7Q` = "GS1.1.1710371796.1.1.1710372547.0.0.0",
-    `_fbp` = "fb.1.1710371798299.41060252",
-    `__ar_v4` = "2YUP7TATPFC7XD6D2GIARW:20240312:4|ZUS4OCBXGBDWLCGQSOCSQN:20240312:4|NHFCO3TELVGCHHJD5FHXVD:20240312:4",
-    `__adroll_fpc` = "71377bd5f4feede28e5a7c76dfcff7c7-1710371796991",
-    `_ga` = "GA1.1.803358876.1710371796",
-    `ASP.NET_SessionId` = "scocfpdfj2z2dwykskr1jugd",
-    `ks03ndsapqq84662kglvmcya009273nhdkwsn` = "43a2229d-4da2-4968-b541-c15df7f6c4f8"
-)
-
-headers = c(
-    `Content-Type` = "application/json;charset=utf-8",
-    `Accept` = "application/json, text/plain, */*",
-    `Sec-Fetch-Site` = "same-origin",
-    `Accept-Language` = "en-US,en;q=0.9",
-    `Accept-Encoding` = "gzip, deflater",
-    `Sec-Fetch-Mode` = "cors",
-    `Host` = "bettingdata.com",
-    `Origin` = "https://bettingdata.com",
-    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
-    `Referer` = "https://bettingdata.com/nba/odds?scope=1&subscope=1&season=2024&seasontype=1&date=03-13-2024&teamkey=ATL&client=1&state=WORLD&league=nba&widget_scope=1",
-    `Content-Length` = "258",
-    `Connection` = "keep-alive",
-    `Sec-Fetch-Dest` = "empty"
-)
-
-data = '{"filters":{"scope":1,"subscope":1,"week":null,"season":2024,"seasontype":1,"team":null,"conference":null,"exportType":null,"date":"03-13-2024","teamkey":"ATL","show_no_odds":false,"client":1,"state":"WORLD","geo_state":null,"league":"nba","widget_scope":1}}'
-
-res <- httr::POST(url = "https://bettingdata.com/NBA_Odds/Odds_Read", httr::add_headers(.headers=headers), httr::set_cookies(.cookies = cookies), body = data)
-
-json <- res$content %>% rawToChar() %>% jsonlite::fromJSON(simplifyVector = T)
-
-starters <- json$games %>%
-    data.frame(stringsAsFactors = F) %>%
-    as_tibble() %>%
-    select(gameId:gameStatusText)
-
-
-
-
-# WNBA ----
-headers = c(
-    `Accept` = "application/json, text/plain, */*",
-    `Sec-Fetch-Site` = "same-origin",
-    `Accept-Encoding` = "gzip, deflate, br",
-    `Accept-Language` = "en-US,en;q=0.9",
-    `Sec-Fetch-Mode` = "cors",
-    `Host` = "stats.wnba.com",
-    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
-    `Referer` = "https://stats.wnba.com/teams/boxscores-traditional/",
-    `Connection` = "keep-alive",
-    `Sec-Fetch-Dest` = "empty",
-    `x-nba-stats-origin` = "stats",
-    `x-nba-stats-token` = "true"
-)
-
-params = list(
-    `DateFrom` = "",
-    `DateTo` = "",
-    `GameSegment` = "",
-    `LastNGames` = "0",
-    `LeagueID` = "10",
-    `Location` = "",
-    `MeasureType` = "Advanced",
-    `Month` = "0",
-    `OpponentTeamID` = "0",
-    `Outcome` = "",
-    `PORound` = "0",
-    `PaceAdjust` = "N",
-    `PerMode` = "Totals",
-    `Period` = "0",
-    `PlusMinus` = "N",
-    `Rank` = "N",
-    `Season` = "2023",
-    `SeasonSegment` = "",
-    `SeasonType` = "Regular Season",
-    `ShotClockRange` = "",
-    `VsConference` = "",
-    `VsDivision` = ""
-)
-
-res <- httr::GET(url = "https://stats.wnba.com/stats/teamgamelogs",
-                 httr::add_headers(.headers=headers),
-                 query = params)
-
-data <- httr::content(res) %>% .[["resultSets"]] %>% .[[1]]
-column_names <- data$headers %>% as.character()
-dt <- rbindlist(data$rowSet) %>% setnames(column_names)
-
-
-
-headers = c(
-    `Accept` = "application/json, text/plain, */*",
-    `Sec-Fetch-Site` = "same-origin",
-    `Accept-Encoding` = "gzip, deflate, br",
-    `Accept-Language` = "en-US,en;q=0.9",
-    `Sec-Fetch-Mode` = "cors",
-    `Host` = "stats.wnba.com",
-    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
-    `Referer` = "https://stats.wnba.com/teams/boxscores-advanced/",
-    `Connection` = "keep-alive",
-    `Sec-Fetch-Dest` = "empty",
-    `x-nba-stats-origin` = "stats",
-    `x-nba-stats-token` = "true"
-)
-
-params = list(
-    `DateFrom` = "",
-    `DateTo` = "",
-    `GameSegment` = "",
-    `LastNGames` = "0",
-    `LeagueID` = "10",
-    `Location` = "",
-    `MeasureType` = "Base",
-    `Month` = "0",
-    `OpponentTeamID` = "0",
-    `Outcome` = "",
-    `PORound` = "0",
-    `PaceAdjust` = "N",
-    `PerMode` = "Totals",
-    `Period` = "0",
-    `PlusMinus` = "N",
-    `Rank` = "N",
-    `Season` = "2023",
-    `SeasonSegment` = "",
-    `SeasonType` = "Regular Season",
-    `ShotClockRange` = "",
-    `VsConference` = "",
-    `VsDivision` = ""
-)
-
-res <- httr::GET(url = "https://stats.wnba.com/stats/teamgamelogs",
-                 httr::add_headers(.headers=headers), query = params)
-
-data <- httr::content(res) %>% .[["resultSets"]] %>% .[[1]]
-column_names <- data$headers %>% as.character()
-dt <- rbindlist(data$rowSet) %>% setnames(column_names)
-
-data <- httr::content(res, type = 'raw')
 
