@@ -533,7 +533,20 @@ dt <- rbindlist(data$rowSet) %>% setnames(column_names) %>% clean_names()
 
 
 
-#### Hustle Box Score ----
+#### Box Score ----
+# boxscorematchupsv3
+# boxscoreplayertrackV3
+# boxscoredefensivev2
+# boxscorehustlev2
+# boxscorefourfactorsv3
+# boxscoretraditionalv3 -- player stats scrape
+# boxscoreadvancedv3 -- player stats scrape
+# boxscoreusagev3 -- player stats scrape
+# boxscoremiscv3 -- player stats scrape
+# boxscorescoringV3 -- player stats scrape
+# playbyplay
+
+
 headers = c(
     `Sec-Fetch-Site` = "same-site",
     `Accept` = "*/*",
@@ -558,12 +571,37 @@ params = list(
     `startRange` = "0"
 )
 
-res <- httr::GET(url = "https://stats.nba.com/stats/boxscorehustlev2",
+res <- httr::GET(url = "https://stats.nba.com/stats/boxscorematchupsv3",
                  httr::add_headers(.headers=headers), query = params)
+
+data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
+column_names <- data$headers %>% as.character()  
+dt <- rbindlist(data$rowSet) %>% setnames(column_names) %>% clean_names()
 
 json <- res$content %>%
     rawToChar() %>%
     jsonlite::fromJSON(simplifyVector = T)
+
+matchups_df <- data.frame(
+    game_id = json$boxScoreMatchups$gameId,
+    away_team_id = json$boxScoreMatchups$awayTeamId,
+    home_team_id = json$boxScoreMatchups$homeTeamId
+)
+
+matchups_df_players <- json$boxScoreMatchups$awayTeam$players
+
+matchups_df_away <- rbindlist(json$boxScoreMatchups$awayTeam$players$matchups)
+
+statistics_list <- lapply(json$boxScoreMatchups$awayTeam$players$matchups,
+                          function(x) x$statistics)
+
+# Combine the extracted statistics into a single data frame
+statistics_df <- rbindlist(statistics_list)
+
+# Optionally, you can convert the data frame to a tibble if you prefer
+statistics_tbl <- as_tibble(statistics_df)
+
+
 
 
 #### Matchups ----
