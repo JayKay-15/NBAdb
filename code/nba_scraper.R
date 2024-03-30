@@ -602,7 +602,7 @@ matchups_df <- bind_rows(matchups_away, matchups_home) %>%
     select(game_id, location, team_id:shooting_fouls)
     
 
-#### Matchups ----
+#### Aggregated Matchups ----
 headers = c(
     `Sec-Fetch-Site` = "same-site",
     `Accept` = "*/*",
@@ -670,6 +670,17 @@ res <- httr::GET(url = "https://api.actionnetwork.com/web/v2/scoreboard/nba",
 json <- res$content %>%
     rawToChar() %>%
     jsonlite::fromJSON(simplifyVector = T)
+
+
+
+
+
+
+
+
+
+
+
 
 
 
