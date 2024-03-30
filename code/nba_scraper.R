@@ -574,35 +574,33 @@ params = list(
 res <- httr::GET(url = "https://stats.nba.com/stats/boxscorematchupsv3",
                  httr::add_headers(.headers=headers), query = params)
 
-data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
-column_names <- data$headers %>% as.character()  
-dt <- rbindlist(data$rowSet) %>% setnames(column_names) %>% clean_names()
-
 json <- res$content %>%
     rawToChar() %>%
     jsonlite::fromJSON(simplifyVector = T)
 
-matchups_df <- data.frame(
-    game_id = json$boxScoreMatchups$gameId,
-    away_team_id = json$boxScoreMatchups$awayTeamId,
-    home_team_id = json$boxScoreMatchups$homeTeamId
-)
+matchups_away <- list(json$boxScoreMatchups$awayTeam) %>%
+    purrr::map_df(flatten) %>%
+    unnest(cols = c(matchups), names_sep = "_") %>%
+    unnest(cols = c(matchups_statistics), names_sep = "_") %>%
+    rename_with(~gsub("^matchups_statistics_", "", .x),
+                starts_with("matchups_statistics_")) %>%
+    clean_names() %>%
+    mutate(game_id = json$boxScoreMatchups$gameId,
+           location = "away")
 
-matchups_df_players <- json$boxScoreMatchups$awayTeam$players
+matchups_home <- list(json$boxScoreMatchups$homeTeam) %>%
+    purrr::map_df(flatten) %>%
+    unnest(cols = c(matchups), names_sep = "_") %>%
+    unnest(cols = c(matchups_statistics), names_sep = "_") %>%
+    rename_with(~gsub("^matchups_statistics_", "", .x),
+                starts_with("matchups_statistics_")) %>%
+    clean_names() %>%
+    mutate(game_id = json$boxScoreMatchups$gameId,
+           location = "home")
 
-matchups_df_away <- rbindlist(json$boxScoreMatchups$awayTeam$players$matchups)
-
-statistics_list <- lapply(json$boxScoreMatchups$awayTeam$players$matchups,
-                          function(x) x$statistics)
-
-# Combine the extracted statistics into a single data frame
-statistics_df <- rbindlist(statistics_list)
-
-# Optionally, you can convert the data frame to a tibble if you prefer
-statistics_tbl <- as_tibble(statistics_df)
-
-
-
+matchups_df <- bind_rows(matchups_away, matchups_home) %>%
+    select(game_id, location, team_id:shooting_fouls)
+    
 
 #### Matchups ----
 headers = c(
