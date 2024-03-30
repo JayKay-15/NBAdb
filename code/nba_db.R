@@ -1740,7 +1740,12 @@ df <- tbl(NBAdb, "mamba_raw_stats") %>%
     collect() %>%
     mutate(game_date = as_date(game_date, origin ="1970-01-01"))
 
+game_ids <- df %>%
+    filter(season_year >= 2020) %>%
+    select(game_id) %>%
+    distinct()
 
+game_ids <- as.character(game_ids$game_id)
 
 
 # # rename tables
@@ -1753,6 +1758,124 @@ df <- tbl(NBAdb, "mamba_raw_stats") %>%
 # 
 # # rename new data by remove "_tmp"
 # DBI::dbExecute(con, "ALTER TABLE flights_tmp RENAME TO flights;")
+
+
+
+scrape_matchups <- function(game_ids) {
+    
+    # loop that pauses 5 minutes between scrapes - 100 games at a time
+    game_ids <- unique(game_ids)
+    sleeper <- 90
+    games_per_batch <- 100
+    game_counter <- 0
+    matchups_final <- data.frame()
+    
+    for (game_id in game_ids) {
+        
+        if (game_counter >= games_per_batch) {
+            Sys.sleep(sleeper)
+            game_counter <- 0
+        }
+        
+        game_counter <- game_counter + 1
+        
+        tryCatch({
+            
+            print(paste0("Getting Game ", game_id))
+            
+            generate_headers <- function() {
+                headers = c(
+                    `Sec-Fetch-Site` = "same-site",
+                    `Accept` = "*/*",
+                    `Origin` = "https://www.nba.com",
+                    `Sec-Fetch-Dest` = "empty",
+                    `Accept-Language` = "en-US,en;q=0.9",
+                    `Sec-Fetch-Mode` = "cors",
+                    `Host` = "stats.nba.com",
+                    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+                    `Referer` = "https://www.nba.com/",
+                    `Accept-Encoding` = "gzip, deflate, br",
+                    `Connection` = "keep-alive"
+                )
+                return(headers)
+            }
+            
+            generate_params  <- function(game_id) {
+                params = list(
+                    `GameID` = as.character(game_id), # 0022300345
+                    `LeagueID` = "00",
+                    `endPeriod` = "0",
+                    `endRange` = "28800",
+                    `rangeType` = "0",
+                    `startPeriod` = "0",
+                    `startRange` = "0"
+                )
+                return(params)
+            }
+            
+            headers <- generate_headers()
+            params <- generate_params(game_id)
+            
+            res <- httr::GET(url = "https://stats.nba.com/stats/boxscorematchupsv3",
+                             httr::add_headers(.headers=headers), query = params)
+            
+            json <- res$content %>%
+                rawToChar() %>%
+                jsonlite::fromJSON(simplifyVector = T)
+            
+            matchups_away <- list(json$boxScoreMatchups$awayTeam) %>%
+                purrr::map_df(flatten) %>%
+                unnest(cols = c(matchups), names_sep = "_") %>%
+                unnest(cols = c(matchups_statistics), names_sep = "_") %>%
+                rename_with(~gsub("^matchups_statistics_", "", .x),
+                            starts_with("matchups_statistics_")) %>%
+                clean_names() %>%
+                mutate(game_id = json$boxScoreMatchups$gameId,
+                       location = "away")
+            
+            matchups_home <- list(json$boxScoreMatchups$homeTeam) %>%
+                purrr::map_df(flatten) %>%
+                unnest(cols = c(matchups), names_sep = "_") %>%
+                unnest(cols = c(matchups_statistics), names_sep = "_") %>%
+                rename_with(~gsub("^matchups_statistics_", "", .x),
+                            starts_with("matchups_statistics_")) %>%
+                clean_names() %>%
+                mutate(game_id = json$boxScoreMatchups$gameId,
+                       location = "home")
+            
+            matchups_df <- bind_rows(matchups_away, matchups_home) %>%
+                select(game_id, location, team_id:shooting_fouls)
+            
+            matchups_final <- bind_rows(matchups_final, matchups_df)
+            
+        }, error = function(e) {
+            # Print an error message
+            cat("Error in processing game ", game_id, ": ",
+                conditionMessage(e), "\n")
+            
+            return(NULL) # return NULL to indicate that there was an error
+        })
+        
+    }
+    
+    assign(x = "matchups_final", matchups_final, envir = .GlobalEnv)
+    
+}
+
+
+scrape_matchups(game_ids)
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
