@@ -1271,3 +1271,29 @@ write_csv(starter_fic, "/Users/jesse/Desktop/starter_fic.csv")
 starter_fic <- read_csv("/Users/jesse/Desktop/starter_fic.csv")
 
 
+
+
+
+
+
+
+
+url <- 'https://www.rotowire.com/betting/nba/tables/games-archive.php'
+
+raw <- jsonlite::read_json(url)
+df_raw <- purrr::map_df(raw, tibble::as_tibble)
+df <- df_raw %>% select(
+    date = game_date, 
+    home = home_team_stats_id, 
+    away = visit_team_stats_id, 
+    prediction = game_over_under, 
+    total
+)
+
+write_csv(df_raw, "/Users/jesse/Desktop/df_raw.csv")
+
+
+json <- jsonlite::read_json(url) %>%
+    purrr::map_df(tibble::as_tibble)
+
+
