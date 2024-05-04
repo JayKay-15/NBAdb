@@ -2,7 +2,8 @@
 
 library(tidyverse)
 library(janitor)
-library(data.table) 
+library(data.table)
+library(rvest)
 library(RSQLite)
 library(DBI)
 
@@ -1877,23 +1878,6 @@ scrape_matchups(game_ids)
 
 
 
-#### playoffs odds
-headers = c(
-    `Accept` = "application/json",
-    `Origin` = "https://www.actionnetwork.com",
-    `Referer` = "https://www.actionnetwork.com/nba/odds",
-    `Sec-Fetch-Dest` = "empty",
-    `Sec-Fetch-Mode` = "cors",
-    `Sec-Fetch-Site` = "same-site",
-    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15"
-)
-
-res <- httr::GET(url = "https://api.actionnetwork.com/web/v2/scoreboard/nba?bookIds=15,30,76,75,123,69,68,972,71,247,79&date=20240416&periods=event", httr::add_headers(.headers=headers))
-
-
-
-
-
 #### scrape playoff teams ----
 scrape_standings <- function(seasons) {
     
@@ -1953,10 +1937,12 @@ scrape_standings <- function(seasons) {
     
 }
 
-scrape_standings(2023:2024)
+scrape_standings(2020:2024)
 
 playoff_teams <- all_standings %>%
-    filter((playoff_rank >= 1 & playoff_rank <= 8) | clinched_playoff_birth == 1)
+    mutate(playoff_seed = if_else(season_year > 2020,
+                                  playoff_seeding, playoff_rank)) %>%
+    filter(playoff_seed <= 8)
 
 
 
@@ -2148,16 +2134,16 @@ mamba_nba_post <- function(seasons) {
                   by = c("season_year", "team_id")) %>%
         semi_join(playoff_teams,
                   by = c("season_year", "opp_team_id" = "team_id"))
-
+    
     stats_vs_post <- raw_stats_reg %>%
         group_by(season_year, team_id, team_name) %>%
         summarize(wins_vs_post = sum(wl == "W"),
                   games_vs_post = n(),
                   win_pct_vs_post = wins_vs_post/games_vs_post) %>%
         ungroup() %>%
-        left_join(playoff_teams %>% select(season_year, team_id, playoff_rank),
+        left_join(playoff_teams %>% select(season_year, team_id, playoff_seed),
                   by = c("season_year", "team_id")) %>%
-        select(season_year, team_id, wins_vs_post:playoff_rank)
+        select(season_year, team_id, wins_vs_post:playoff_seed)
     
     
     
@@ -2263,8 +2249,8 @@ mamba_nba_post <- function(seasons) {
                fgm:opp_pct_uast_fgm) %>%
         arrange(game_date, game_id, location)
     
-
-        
+    
+    
     
     raw_stats <- raw_stats_reg %>%
         bind_rows(raw_stats_post)
@@ -2365,25 +2351,185 @@ mamba_nba_post <- function(seasons) {
         na.exclude() %>%
         left_join(stats_vs_post, by = c("season_year", "team_id")) %>%
         filter(season_type == "post")
-
-
+    
+    
     # lagged stats in mamba format - long
     assign(x = "mamba_lag_long_post", nba_final_full, envir = .GlobalEnv)
-
+    
 }
 
-mamba_nba_post(2023:2024)
+mamba_nba_post(2020:2024)
 
 
 
 mamba_post <- mamba_lag_long_post %>%
     group_by(season_year, team_id) %>%
     mutate(
+        series_matchup = paste0(team_name," - ", opp_team_name, " - ", season_year),
         post_wins = cumsum(wl == "W"),
-        opp_post_wins = cumsum(wl == "L"),
-        series_wins = if_else(post_wins > 4, post_wins-4, post_wins),
-        opp_series_wins = if_else(opp_post_wins > 4, opp_post_wins-4, opp_post_wins)
-    )
+        opp_post_wins = cumsum(wl == "L")
+    ) %>%
+    ungroup() %>%
+    group_by(series_matchup) %>%
+    mutate(
+        series_wins = cumsum(wl == "W"),
+        opp_series_wins = cumsum(wl == "L"),
+        series_start = !duplicated(series_matchup)
+    ) %>%
+    ungroup() %>%
+    group_by(season_year, team_name) %>%
+    mutate(
+        across(series_wins:opp_series_wins, \(x) lag(x, n = 1)),
+        series_wins = replace_na(series_wins, 0),
+        opp_series_wins = replace_na(opp_series_wins, 0),
+        series_wins = if_else(series_start == T, 0, series_wins),
+        opp_series_wins = if_else(series_start == T, 0, opp_series_wins),
+        series_counter = cumsum(series_start == T)
+    ) %>%
+    ungroup() %>%
+    mutate(
+        series = case_when(
+            series_counter == 1 ~ "Conf First Round",
+            series_counter == 2 ~ "Conf Semifinals",
+            series_counter == 3 ~ "Conf Finals",
+            series_counter == 4 ~ "Finals",
+        )
+    ) %>%
+    select(-c(series_matchup:opp_post_wins), -series_start, -series_counter)
+
+
+
+
+#### scrape playoff series odds
+url <- paste0("https://www.basketball-reference.com/playoffs/series.html")
+
+webpage <- read_html(url)
+tables <- webpage %>% html_nodes("table") %>% html_table()
+
+df <- as.data.frame(tables[1]) %>%
+    row_to_names(row_number = 1) %>%
+    clean_names() %>%
+    select(yr, series, favorite, underdog) %>%
+    filter(yr != "Yr" & yr != "") %>%
+    mutate(
+        favorite_team = str_trim(gsub("\\(.*\\)", "", favorite)),
+        favorite_odds = as.numeric(gsub(".*\\((.*)\\)", "\\1", favorite)),
+        underdog_team = str_trim(gsub("\\(.*\\)", "", underdog)),
+        underdog_odds = as.numeric(gsub(".*\\((.*)\\)", "\\1", underdog)),
+        favorite_team = str_replace(favorite_team, "BRK", "BKN"),
+        favorite_team = str_replace(favorite_team, "PHO", "PHX"),
+        underdog_team = str_replace(underdog_team, "BRK", "BKN"),
+        underdog_team = str_replace(underdog_team, "PHO", "PHX"),
+        series = if_else(grepl("Conf", series), sub(".*Conf", "Conf", series), series),
+        season_year = as.numeric(yr)
+    ) %>%
+    select(season_year, series,
+           favorite_team, favorite_odds,
+           underdog_team, underdog_odds)
+
+
+joined_df <- mamba_post %>%
+    left_join((df %>% select(season_year:favorite_team, favorite_odds)),
+              by = c("season_year" = "season_year",
+                     "team_abbreviation" = "favorite_team",
+                     "series" = "series")) %>%
+    left_join((df %>% select(season_year:series, underdog_team, underdog_odds)),
+              by = c("season_year" = "season_year",
+                     "team_abbreviation" = "underdog_team",
+                     "series" = "series")) %>%
+    mutate(team_odds = if_else(is.na(favorite_odds), underdog_odds, favorite_odds)) %>%
+    select(-favorite_odds, -underdog_odds)
+
+
+
+
+
+
+
+#### scrape historical odds
+playoff_dates <- mamba_lag_long_post %>% filter(game_date >= "2023-05-05")
+playoff_dates <- unique(playoff_dates$game_date)
+
+playoff_odds <- data.frame()
+
+# https://www.scoresandodds.com/nba?date=2024-05-04
+
+for(game_date in playoff_dates){
+    
+    currentDate <- as.Date(game_date)
+    
+    print(currentDate)
+    
+    oddsURL <- paste0("https://www.scoresandodds.com/nba?date=", currentDate)
+    
+    res <- httr::GET(oddsURL)
+    con <- httr::content(res, 'text')
+    oddspage <- xml2::read_html(con)
+    
+    node <- rvest::html_nodes(oddspage, "table") %>% html_table()
+    
+    games <- rbindlist(node)
+    
+    odds <- games %>%
+        mutate(game_date = as.Date(currentDate)) %>%
+        rename(final = 1) %>%
+        clean_names() %>%
+        mutate(
+            location = if_else(seq_along(final) %% 2 == 0, "home", "away"),
+            team_name = trimws(str_extract(final, "\\s\\b(\\w+)\\b\\s")),
+            spread_new = as.numeric(str_replace(spread, "\\s*[+-]\\d+$", "")),
+            moneyline_new = as.numeric(moneyline),
+            moneyline_new = ifelse(is.na(moneyline_new), 100, moneyline_new),
+            total_new = as.numeric(trimws(str_replace(str_replace(total, "\\s*[+-]\\d+$", ""), "^[ou]", "")))
+        ) %>%
+        select(game_date:total_new)
+    
+    playoff_odds <- bind_rows(playoff_odds, odds)
+    
+}
+
+
+
+
+
+
+library(xml2)
+
+# https://www.sportsbookreview.com/betting-odds/nba-basketball/?date=2024-05-03
+
+oddsURL <- "https://www.sportsbookreview.com/betting-odds/nba-basketball/?date=2024-05-03"
+
+res <- httr::GET(oddsURL)
+con <- httr::content(res, 'text')
+oddspage <- xml2::read_html(con)
+
+node <- rvest::html_nodes(oddspage, "section#section-nba")
+
+child <- html_children(node)
+
+
+
+
+
+
+
+
+
+
+
+#### playoffs odds
+headers = c(
+    `Accept` = "application/json",
+    `Origin` = "https://www.actionnetwork.com",
+    `Referer` = "https://www.actionnetwork.com/nba/odds",
+    `Sec-Fetch-Dest` = "empty",
+    `Sec-Fetch-Mode` = "cors",
+    `Sec-Fetch-Site` = "same-site",
+    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15"
+)
+
+res <- httr::GET(url = "https://api.actionnetwork.com/web/v2/scoreboard/nba?bookIds=15,30,76,75,123,69,68,972,71,247,79&date=20240416&periods=event", httr::add_headers(.headers=headers))
+
 
 
 
