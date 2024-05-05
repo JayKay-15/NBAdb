@@ -1638,6 +1638,758 @@ scrape_team_dictionary <- function() {
 scrape_team_dictionary()
 
 
+#### PLAYOFF MODEL ####
+
+#### scrape playoff teams ----
+scrape_standings <- function(seasons) {
+    
+    all_standings <- data.frame()
+    
+    generate_headers <- function() {
+        headers = c(
+            `Sec-Fetch-Site` = "same-site",
+            `Accept` = "*/*",
+            `Origin` = "https://www.nba.com",
+            `Sec-Fetch-Dest` = "empty",
+            `Accept-Language` = "en-US,en;q=0.9",
+            `Sec-Fetch-Mode` = "cors",
+            `Host` = "stats.nba.com",
+            `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
+            `Referer` = "https://www.nba.com/",
+            `Accept-Encoding` = "gzip, deflate, br",
+            `Connection` = "keep-alive"
+        )
+        return(headers)
+    }
+    
+    headers <- generate_headers()
+    
+    generate_parameters <- function(year, measure_type) {
+        year <- (year - 1)
+        season <- sprintf("%d-%02d", year, (year + 1) %% 100)
+        params = list(
+            `GroupBy` = "conf",
+            `LeagueID` = "00",
+            `Season` = season,
+            `SeasonType` = "Regular Season",
+            `Section` = "overall"
+        )
+        return(params)
+    }
+    
+    for (year in seasons) {
+        params <- generate_parameters(year)
+        
+        res <- httr::GET(url = "https://stats.nba.com/stats/leaguestandingsv3",
+                         httr::add_headers(.headers=headers), query = params)
+        
+        data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
+        column_names <- data$headers %>% as.character()
+        dt <- rbindlist(data$rowSet) %>%
+            setnames(column_names) %>%
+            clean_names() %>%
+            mutate(season_year = year)
+        
+        all_standings <- bind_rows(all_standings, dt)
+        
+        print(paste0(params$Season))
+    }
+    
+    assign(x = "all_standings", all_standings, envir = .GlobalEnv)
+    
+}
+
+scrape_standings(2020:2024)
+
+#### scrape stats for playoff mamba model ----
+mamba_nba_post <- function(seasons) {
+    
+    generate_headers <- function() {
+        headers <- c(
+            `Sec-Fetch-Site` = "same-site",
+            `Accept` = "*/*",
+            `Origin` = "https://www.nba.com",
+            `Sec-Fetch-Dest` = "empty",
+            `Accept-Language` = "en-US,en;q=0.9",
+            `Sec-Fetch-Mode` = "cors",
+            `Host` = "stats.nba.com",
+            `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+            `Referer` = "https://www.nba.com/",
+            `Accept-Encoding` = "gzip, deflate, br",
+            `Connection` = "keep-alive"
+        )
+        return(headers)
+    }
+    
+    generate_parameters_reg <- function(year, measure_type) {
+        year <- (year - 1)
+        season <- sprintf("%d-%02d", year, (year + 1) %% 100)
+        params <- list(
+            `DateFrom` = "",
+            `DateTo` = "",
+            `GameSegment` = "",
+            `ISTRound` = "",
+            `LastNGames` = "0",
+            `LeagueID` = "00",
+            `Location` = "",
+            `MeasureType` = measure_type,
+            `Month` = "0",
+            `OpponentTeamID` = "0",
+            `Outcome` = "",
+            `PORound` = "0",
+            `PaceAdjust` = "N",
+            `PerMode` = "Totals",
+            `Period` = "0",
+            `PlusMinus` = "N",
+            `Rank` = "N",
+            `Season` = season,
+            `SeasonSegment` = "",
+            `SeasonType` = "Regular Season",
+            `ShotClockRange` = "",
+            `VsConference` = "",
+            `VsDivision` = ""
+        )
+        return(params)
+    }
+    
+    generate_parameters_post <- function(year, measure_type) {
+        year <- (year - 1)
+        season <- sprintf("%d-%02d", year, (year + 1) %% 100)
+        params <- list(
+            `DateFrom` = "",
+            `DateTo` = "",
+            `GameSegment` = "",
+            `ISTRound` = "",
+            `LastNGames` = "0",
+            `LeagueID` = "00",
+            `Location` = "",
+            `MeasureType` = measure_type,
+            `Month` = "0",
+            `OpponentTeamID` = "0",
+            `Outcome` = "",
+            `PORound` = "0",
+            `PaceAdjust` = "N",
+            `PerMode` = "Totals",
+            `Period` = "0",
+            `PlusMinus` = "N",
+            `Rank` = "N",
+            `Season` = season,
+            `SeasonSegment` = "",
+            `SeasonType` = "Playoffs",
+            `ShotClockRange` = "",
+            `VsConference` = "",
+            `VsDivision` = ""
+        )
+        return(params)
+    }
+    
+    headers <- generate_headers()
+    
+    all_standings <- tbl(NBAdb, "all_standings") %>% collect()
+    
+    playoff_teams <- all_standings %>%
+        mutate(playoff_seed = if_else(season_year > 2020,
+                                      playoff_seeding, playoff_rank)) %>%
+        filter(playoff_seed <= 8)
+    
+    # Regular Season
+    all_data_list_reg <- list()
+    
+    # Define available measure types
+    available_measure_types <- c("Base", "Advanced", "Four Factors", "Misc", "Scoring")
+    
+    for (measure_type in available_measure_types) {
+        all_data <- data.frame()
+        
+        for (year in seasons) {
+            params <- generate_parameters_reg(year, measure_type)
+            
+            res <- httr::GET(url = "https://stats.nba.com/stats/teamgamelogs",
+                             httr::add_headers(.headers = headers), query = params)
+            data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
+            column_names <- data$headers %>% as.character()
+            dt <- rbindlist(data$rowSet) %>% setnames(column_names)
+            
+            all_data <- bind_rows(all_data, dt)
+            
+            print(paste0(params$Season, " ", params$MeasureType))
+        }
+        
+        all_data_list_reg[[measure_type]] <- all_data
+    }
+    
+    # Data transformation code
+    cleaned_team_list_reg <- lapply(all_data_list_reg, function(df) {
+        df <- clean_names(df) %>%
+            select(-starts_with(c("e_","opp_")), -ends_with(c("_rank","_flag")))
+        return(df)
+    })
+    
+    combined_df_reg <- cleaned_team_list_reg[[1]]
+    for (i in 2:length(cleaned_team_list_reg)) {
+        df_to_join <- cleaned_team_list_reg[[i]]
+        existing_cols <- intersect(names(combined_df_reg), names(df_to_join))
+        existing_cols <- setdiff(existing_cols, c("game_id", "team_name"))
+        df_to_join <- df_to_join %>% select(-any_of(existing_cols))
+        combined_df_reg <- left_join(combined_df_reg, df_to_join, by = c("game_id", "team_name"))
+    }
+    
+    team_all_stats_reg <- combined_df_reg %>%
+        arrange(game_date, game_id) %>%
+        mutate(location = if_else(grepl("@", matchup) == T, "away", "home"),
+               game_date = as_date(game_date),
+               season_year = as.numeric(substr(season_year, 1, 4)) + 1) %>%
+        select(season_year:matchup, location, wl:pct_uast_fgm)
+    
+    opp_all_stats_reg <- team_all_stats_reg %>%
+        select(game_id, team_id, team_abbreviation, team_name,
+               fgm:pct_uast_fgm) %>%
+        rename_with(~paste0("opp_", .), -c(game_id)) %>%
+        select(-opp_plus_minus)
+    
+    team_games_reg <- team_all_stats_reg %>%
+        distinct(season_year, game_id, game_date, team_id, team_name) %>%
+        group_by(season_year, team_id) %>%
+        mutate(
+            game_count_season = 1:n(),
+            days_rest_team = ifelse(game_count_season > 1,
+                                    (game_date - lag(game_date) - 1),
+                                    120),
+            days_next_game_team =
+                ifelse(game_count_season < 82,
+                       ((
+                           lead(game_date) - game_date
+                       ) - 1),
+                       120),
+            days_next_game_team = days_next_game_team %>% as.numeric(),
+            days_rest_team = days_rest_team %>% as.numeric(),
+            is_b2b = if_else(days_next_game_team == 0 |
+                                 days_rest_team == 0, TRUE, FALSE),
+            is_b2b_first = if_else(lead(days_next_game_team) == 0, TRUE, FALSE),
+            is_b2b_second = if_else(lag(days_next_game_team) == 0, TRUE, FALSE)
+        ) %>%
+        ungroup() %>%
+        mutate_if(is.logical, ~ ifelse(is.na(.), FALSE, .)) %>%
+        select(game_id, team_name,
+               is_b2b_first, is_b2b_second, game_count_season)
+    
+    opp_team_games_reg <- team_games_reg %>%
+        select(game_id, team_name,
+               is_b2b_first, is_b2b_second, game_count_season) %>%
+        rename_with(~paste0("opp_", .), -c(game_id))
+    
+    raw_stats_reg <- team_all_stats_reg %>%
+        inner_join(opp_all_stats_reg, by = c("game_id"), relationship = "many-to-many") %>%
+        filter(team_name != opp_team_name) %>%
+        left_join(team_games_reg, by = c("game_id", "team_name")) %>%
+        left_join(opp_team_games_reg, by = c("game_id", "opp_team_name")) %>%
+        mutate(season_type = "regular") %>%
+        select(season_type,
+               season_year, team_id, team_abbreviation, team_name,
+               opp_team_id, opp_team_abbreviation, opp_team_name,
+               game_id:min, pts, opp_pts, plus_minus,
+               game_count_season, opp_game_count_season,
+               is_b2b_first, is_b2b_second, opp_is_b2b_first, opp_is_b2b_second,
+               fgm:opp_pct_uast_fgm) %>%
+        arrange(game_date, game_id, location) %>%
+        semi_join(playoff_teams,
+                  by = c("season_year", "team_id")) %>%
+        semi_join(playoff_teams,
+                  by = c("season_year", "opp_team_id" = "team_id"))
+    
+    stats_vs_post <- raw_stats_reg %>%
+        group_by(season_year, team_id, team_name) %>%
+        summarize(wins_vs_post = sum(wl == "W"),
+                  games_vs_post = n(),
+                  win_pct_vs_post = wins_vs_post/games_vs_post) %>%
+        ungroup() %>%
+        left_join(playoff_teams %>% select(season_year, team_id, playoff_seed),
+                  by = c("season_year", "team_id")) %>%
+        select(season_year, team_id, wins_vs_post:playoff_seed)
+    
+    
+    # Playoffs
+    all_data_list_post <- list()
+    
+    # Define available measure types
+    available_measure_types <- c("Base", "Advanced", "Four Factors", "Misc", "Scoring")
+    
+    for (measure_type in available_measure_types) {
+        all_data <- data.frame()
+        
+        for (year in seasons) {
+            params <- generate_parameters_post(year, measure_type)
+            
+            res <- httr::GET(url = "https://stats.nba.com/stats/teamgamelogs",
+                             httr::add_headers(.headers = headers), query = params)
+            data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
+            column_names <- data$headers %>% as.character()
+            dt <- rbindlist(data$rowSet) %>% setnames(column_names)
+            
+            all_data <- bind_rows(all_data, dt)
+            
+            print(paste0(params$Season, " ", params$MeasureType))
+        }
+        
+        all_data_list_post[[measure_type]] <- all_data
+    }
+    
+    # Data transformation code
+    cleaned_team_list_post <- lapply(all_data_list_post, function(df) {
+        df <- clean_names(df) %>%
+            select(-starts_with(c("e_","opp_")), -ends_with(c("_rank","_flag")))
+        return(df)
+    })
+    
+    combined_df_post <- cleaned_team_list_post[[1]]
+    for (i in 2:length(cleaned_team_list_post)) {
+        df_to_join <- cleaned_team_list_post[[i]]
+        existing_cols <- intersect(names(combined_df_post), names(df_to_join))
+        existing_cols <- setdiff(existing_cols, c("game_id", "team_name"))
+        df_to_join <- df_to_join %>% select(-any_of(existing_cols))
+        combined_df_post <- left_join(combined_df_post, df_to_join, by = c("game_id", "team_name"))
+    }
+    
+    team_all_stats_post <- combined_df_post %>%
+        arrange(game_date, game_id) %>%
+        mutate(location = if_else(grepl("@", matchup) == T, "away", "home"),
+               game_date = as_date(game_date),
+               season_year = as.numeric(substr(season_year, 1, 4)) + 1) %>%
+        select(season_year:matchup, location, wl:pct_uast_fgm)
+    
+    opp_all_stats_post <- team_all_stats_post %>%
+        select(game_id, team_id, team_abbreviation, team_name,
+               fgm:pct_uast_fgm) %>%
+        rename_with(~paste0("opp_", .), -c(game_id)) %>%
+        select(-opp_plus_minus)
+    
+    team_games_post <- team_all_stats_post %>%
+        distinct(season_year, game_id, game_date, team_id, team_name) %>%
+        group_by(season_year, team_id) %>%
+        mutate(
+            game_count_season = 1:n(),
+            days_rest_team = ifelse(game_count_season > 1,
+                                    (game_date - lag(game_date) - 1),
+                                    120),
+            days_next_game_team =
+                ifelse(game_count_season < 82,
+                       ((
+                           lead(game_date) - game_date
+                       ) - 1),
+                       120),
+            days_next_game_team = days_next_game_team %>% as.numeric(),
+            days_rest_team = days_rest_team %>% as.numeric(),
+            is_b2b = if_else(days_next_game_team == 0 |
+                                 days_rest_team == 0, TRUE, FALSE),
+            is_b2b_first = if_else(lead(days_next_game_team) == 0, TRUE, FALSE),
+            is_b2b_second = if_else(lag(days_next_game_team) == 0, TRUE, FALSE)
+        ) %>%
+        ungroup() %>%
+        mutate_if(is.logical, ~ ifelse(is.na(.), FALSE, .)) %>%
+        select(game_id, team_name,
+               is_b2b_first, is_b2b_second, game_count_season)
+    
+    opp_team_games_post <- team_games_post %>%
+        select(game_id, team_name,
+               is_b2b_first, is_b2b_second, game_count_season) %>%
+        rename_with(~paste0("opp_", .), -c(game_id))
+    
+    raw_stats_post <- team_all_stats_post %>%
+        inner_join(opp_all_stats_post, by = c("game_id"), relationship = "many-to-many") %>%
+        filter(team_name != opp_team_name) %>%
+        left_join(team_games_post, by = c("game_id", "team_name")) %>%
+        left_join(opp_team_games_post, by = c("game_id", "opp_team_name")) %>%
+        mutate(season_type = "post") %>%
+        select(season_type,
+               season_year, team_id, team_abbreviation, team_name,
+               opp_team_id, opp_team_abbreviation, opp_team_name,
+               game_id:min, pts, opp_pts, plus_minus,
+               game_count_season, opp_game_count_season,
+               is_b2b_first, is_b2b_second, opp_is_b2b_first, opp_is_b2b_second,
+               fgm:opp_pct_uast_fgm) %>%
+        arrange(game_date, game_id, location)
+    
+    
+    raw_stats <- raw_stats_reg %>%
+        bind_rows(raw_stats_post)
+    
+    stats_mov_avg <- raw_stats %>%
+        mutate(pts_2pt_mr = round(pct_pts_2pt_mr*pts,0),
+               ast_2pm = round(pct_ast_2pm*(fgm-fg3m),0),
+               ast_3pm = round(pct_ast_3pm*fg3m,0),
+               opp_pts_2pt_mr = round(opp_pct_pts_2pt_mr*opp_pts,0),
+               opp_ast_2pm = round(opp_pct_ast_2pm*(opp_fgm-opp_fg3m),0),
+               opp_ast_3pm = round(opp_pct_ast_3pm*opp_fg3m,0)
+        ) %>%
+        group_by(season_year, team_id, location) %>%
+        mutate(across(c(fgm:opp_pct_uast_fgm),
+                      \(x) pracma::movavg(x, n = 10, type = 'e'))
+        ) %>%
+        ungroup() %>%
+        mutate(fg_pct = fgm/fga,
+               fg3_pct = fg3m/fg3a,
+               ft_pct = ftm/fta,
+               ast_pct = ast/fgm,
+               oreb_pct = oreb/(oreb+opp_dreb),
+               dreb_pct = dreb/(dreb+opp_oreb),
+               reb_pct = reb/(reb+opp_reb),
+               tm_tov_pct = tov/poss,
+               efg_pct = (fgm+(0.5*fg3m))/fga,
+               ts_pct = pts/(2*(fga+0.44*fta)),
+               fta_rate = fta/fga,
+               pct_fga_2pt = (fga-fg3a)/fga,
+               pct_fga_3pt = 1-pct_fga_2pt,
+               pct_pts_2pt = ((fgm-fg3m)*2)/pts,
+               pct_pts_2pt_mr = pts_2pt_mr/pts,
+               pct_pts_3pt = (fg3m*3)/pts,
+               pct_pts_fb = pts_fb/pts,
+               pct_pts_ft = ftm/pts,
+               pct_pts_off_tov = pts_off_tov/pts,
+               pct_pts_paint = pts_paint/pts,
+               pct_ast_2pm = ast_2pm/(fgm-fg3m),
+               pct_uast_2pm = 1-pct_ast_2pm,
+               pct_ast_3pm = ast_3pm/fg3m,
+               pct_uast_3pm = 1-pct_ast_3pm,
+               pct_ast_fgm = ast_pct,
+               pct_uast_fgm = 1-ast_pct,
+               opp_fg_pct = opp_fgm/opp_fga,
+               opp_fg3_pct = opp_fg3m/opp_fg3a,
+               opp_ft_pct = opp_ftm/opp_fta,
+               opp_ast_pct = opp_ast/opp_fgm,
+               opp_oreb_pct = opp_oreb/(opp_oreb+dreb),
+               opp_dreb_pct = opp_dreb/(opp_dreb+oreb),
+               opp_reb_pct = opp_reb/(reb+opp_reb),
+               opp_tm_tov_pct = opp_tov/opp_poss,
+               opp_efg_pct = (opp_fgm+(0.5*opp_fg3m))/opp_fga,
+               opp_ts_pct = opp_pts/(2*(opp_fga+0.44*opp_fta)),
+               opp_fta_rate = opp_fta/opp_fga,
+               opp_pct_fga_2pt = (opp_fga-opp_fg3a)/opp_fga,
+               opp_pct_fga_3pt = 1-opp_pct_fga_2pt,
+               opp_pct_pts_2pt = ((opp_fgm-opp_fg3m)*2)/opp_pts,
+               opp_pct_pts_2pt_mr = opp_pts_2pt_mr/opp_pts,
+               opp_pct_pts_3pt = (opp_fg3m*3)/opp_pts,
+               opp_pct_pts_fb = opp_pts_fb/opp_pts,
+               opp_pct_pts_ft = opp_ftm/opp_pts,
+               opp_pct_pts_off_tov = opp_pts_off_tov/opp_pts,
+               opp_pct_pts_paint = opp_pts_paint/opp_pts,
+               opp_pct_ast_2pm = opp_ast_2pm/(opp_fgm-opp_fg3m),
+               opp_pct_uast_2pm = 1-opp_pct_ast_2pm,
+               opp_pct_ast_3pm = opp_ast_3pm/opp_fg3m,
+               opp_pct_uast_3pm = 1-opp_pct_ast_3pm,
+               opp_pct_ast_fgm = opp_ast_pct,
+               opp_pct_uast_fgm = 1-opp_ast_pct) %>%
+        select(-c(pts_2pt_mr, ast_2pm, ast_3pm,
+                  opp_pts_2pt_mr, opp_ast_2pm, opp_ast_3pm))
+    
+    stats_lag <- stats_mov_avg %>%
+        group_by(season_year, team_name, location) %>%
+        mutate(across(fgm:opp_pct_uast_fgm, \(x) lag(x, n = 1))) %>%
+        ungroup() %>%
+        na.exclude()
+    
+    base_stats_full <- stats_lag %>%
+        select(season_type:opp_is_b2b_second)
+    
+    team_stats <- stats_lag %>%
+        select(season_year, game_id, team_name, fgm:opp_pct_uast_fgm) %>%
+        rename_with(~paste0("team_", .), fgm:opp_pct_uast_fgm) %>%
+        select(-season_year)
+    
+    opp_stats <- stats_lag %>%
+        select(season_year, game_id, team_name, fgm:opp_pct_uast_fgm) %>%
+        rename_with(~paste0("opp_", .), team_name:opp_pct_uast_fgm) %>%
+        select(-season_year)
+    
+    nba_final_full <- base_stats_full %>%
+        left_join(team_stats, by = c("game_id" = "game_id",
+                                     "team_name" = "team_name")) %>%
+        left_join(opp_stats, by = c("game_id" = "game_id",
+                                    "opp_team_name" = "opp_team_name")) %>%
+        arrange(game_date, game_id, location) %>%
+        na.exclude() %>%
+        left_join(stats_vs_post, by = c("season_year", "team_id")) %>%
+        filter(season_type == "post")
+    
+    
+    # lagged stats in mamba format - long
+    assign(x = "mamba_lag_long_post", nba_final_full, envir = .GlobalEnv)
+    
+}
+
+mamba_nba_post(2020:2024)
+
+#### scrape stats basketball reference for series odds ----
+scrape_nba_series_odds <- function() {
+    
+    url <- paste0("https://www.basketball-reference.com/playoffs/series.html")
+    
+    webpage <- read_html(url)
+    tables <- webpage %>% html_nodes("table") %>% html_table()
+    
+    series_odds <- as.data.frame(tables[1]) %>%
+        row_to_names(row_number = 1) %>%
+        clean_names() %>%
+        select(yr, series, favorite, underdog) %>%
+        filter(yr != "Yr" & yr != "") %>%
+        mutate(
+            favorite_team = str_trim(gsub("\\(.*\\)", "", favorite)),
+            favorite_odds = as.numeric(gsub(".*\\((.*)\\)", "\\1", favorite)),
+            underdog_team = str_trim(gsub("\\(.*\\)", "", underdog)),
+            underdog_odds = as.numeric(gsub(".*\\((.*)\\)", "\\1", underdog)),
+            favorite_team = str_replace(favorite_team, "BRK", "BKN"),
+            favorite_team = str_replace(favorite_team, "PHO", "PHX"),
+            underdog_team = str_replace(underdog_team, "BRK", "BKN"),
+            underdog_team = str_replace(underdog_team, "PHO", "PHX"),
+            series = if_else(grepl("Conf", series), sub(".*Conf", "Conf", series), series),
+            season_year = as.numeric(yr)
+        ) %>%
+        select(season_year, series,
+               favorite_team, favorite_odds,
+               underdog_team, underdog_odds)
+    
+    assign(x = "bref_series_odds", series_odds, envir = .GlobalEnv)
+    
+}
+
+scrape_nba_series_odds()
+
+#### NBA playoff odds scraper ----
+nba_odds_post_db <- tbl(NBAdb, "nba_odds_post") %>%
+    collect() %>%
+    mutate(game_date = as_date(game_date, origin ="1970-01-01"))
+
+season_active_post <- tbl(NBAdb, "mamba_long_odds_post") %>%
+    collect() %>%
+    mutate(game_date = as_date(game_date, origin ="1970-01-01"))
+
+missing_dates <- season_active_post %>%
+    anti_join(nba_odds_post_db, by = "game_date")
+
+scrape_nba_odds_post <- function(date_range) {
+    
+    odds_df <- data.frame()
+    
+    for (date_id in date_range) {
+        
+        date_id <- gsub("-", "", as_date(date_id))
+        
+        print(paste0("scraping ", date_id))
+        
+        headers = c(
+            `Sec-Fetch-Site` = "same-site",
+            `Accept` = "application/json",
+            `Origin` = "https://www.actionnetwork.com",
+            `Sec-Fetch-Dest` = "empty",
+            `Accept-Language` = "en-US,en;q=0.9",
+            `Sec-Fetch-Mode` = "cors",
+            `Host` = "api.actionnetwork.com",
+            `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+            `Referer` = "https://www.actionnetwork.com/nba/odds",
+            `Accept-Encoding` = "gzip, deflate, br",
+            `Connection` = "keep-alive"
+        )
+        
+        res <- httr::GET(url = paste0("https://api.actionnetwork.com/web/v2/scoreboard/nba?bookIds=15,30,76,75,123,69,68,972,71,247,79&date=",date_id,"&periods=event"),
+                         httr::add_headers(.headers=headers))
+        
+        json <- res$content %>%
+            rawToChar() %>%
+            jsonlite::fromJSON(simplifyVector = T)
+        
+        odds_game_away <- json$games %>%
+            select(id, season, start_time, away_team_id, home_team_id) %>%
+            rename(event_id = id,
+                   team_id = away_team_id,
+                   opp_team_id = home_team_id) %>%
+            mutate(location = "away",
+                   season = season + 1)
+        
+        odds_game_home <- json$games %>%
+            select(id, season, start_time, away_team_id, home_team_id) %>%
+            rename(event_id = id,
+                   team_id = home_team_id,
+                   opp_team_id = away_team_id) %>%
+            mutate(location = "home",
+                   season = season + 1)
+        
+        odds_game_info <- bind_rows(odds_game_away, odds_game_home) %>%
+            mutate(
+                start_time = as_date(format(with_tz(ymd_hms(start_time),
+                                                    tzone = "America/Chicago"),
+                                            "%Y-%m-%d"))
+            ) %>%
+            arrange(event_id, location)
+        
+        remove_standings <- function(team) {
+            team[["standings"]] <- NULL
+            return(team)
+        }
+        
+        json[["games"]][["teams"]] <- lapply(json[["games"]][["teams"]], remove_standings)
+        
+        odds_team_info <- rbindlist(json[["games"]][["teams"]]) %>%
+            select(id, full_name)
+        
+        all_spread <- rbindlist(json[["games"]][["markets"]][["69"]][["event"]][["spread"]])
+        all_moneyline <- rbindlist(json[["games"]][["markets"]][["69"]][["event"]][["moneyline"]])
+        all_over_under <- rbindlist(json[["games"]][["markets"]][["69"]][["event"]][["total"]])
+        
+        # all_spread <- rbindlist(json[["games"]][["markets"]][["69"]][["firstquarter"]][["spread"]])
+        # all_moneyline <- rbindlist(json[["games"]][["markets"]][["69"]][["firstquarter"]][["moneyline"]])
+        # all_over_under <- rbindlist(json[["games"]][["markets"]][["69"]][["firstquarter"]][["total"]])
+        
+        odds_spread <- all_spread %>%
+            select(event_id, side, value) %>%
+            rename(location = side,
+                   spread = value)
+        
+        odds_spread <- odds_spread %>%
+            left_join(odds_spread,
+                      by = "event_id",
+                      relationship = "many-to-many",
+                      suffix = c("_team", "_opp")) %>%
+            filter(location_team != location_opp) %>%
+            select(-location_opp) %>%
+            rename(location = location_team)
+        
+        odds_moneyline <- all_moneyline %>%
+            select(event_id, side, odds) %>%
+            rename(location = side,
+                   moneyline = odds)
+        
+        odds_moneyline <- odds_moneyline %>%
+            left_join(odds_moneyline,
+                      by = "event_id",
+                      relationship = "many-to-many",
+                      suffix = c("_team", "_opp")) %>%
+            filter(location_team != location_opp) %>%
+            select(-location_opp) %>%
+            rename(location = location_team)
+        
+        odds_totals <- all_over_under %>%
+            select(event_id, value) %>%
+            rename(over_under = value) %>%
+            distinct()
+        
+        odds_clean <- odds_game_info %>%
+            left_join(odds_team_info, by = c("team_id" = "id")) %>%
+            left_join(odds_team_info, by = c("opp_team_id" = "id"),
+                      suffix = c("_team", "_opp")) %>%
+            left_join(odds_spread, by = c("event_id", "location")) %>%
+            left_join(odds_moneyline, by = c("event_id", "location")) %>%
+            left_join(odds_totals, by = c("event_id")) %>%
+            select(-c(event_id, team_id, opp_team_id)) %>%
+            rename(
+                season_year = season,
+                game_date = start_time,
+                team_name = full_name_team,
+                opp_team_name = full_name_opp,
+                team_spread = spread_team,
+                opp_spread = spread_opp,
+                team_moneyline = moneyline_team,
+                opp_moneyline = moneyline_opp
+            )
+        
+        odds_wpo <- odds_clean %>%
+            mutate(team_moneyline = odds.converter::odds.us2dec(team_moneyline),
+                   opp_moneyline = odds.converter::odds.us2dec(opp_moneyline)) %>%
+            select(team_moneyline, opp_moneyline)
+        
+        odds_wpo <- implied::implied_probabilities(odds_wpo, method = 'wpo')
+        
+        odds_final <- odds_clean %>%
+            mutate(team_implied_prob = odds_wpo$probabilities[,1],
+                   opp_implied_prob = odds_wpo$probabilities[,2])
+        
+        odds_df <- bind_rows(odds_df, odds_final)
+        
+    }
+    
+    assign(x = "nba_odds_post", odds_df, envir = .GlobalEnv)
+}
+
+scrape_nba_odds_post(unique(missing_dates$game_date))
+
+#### attach odds to playoff mamba ----
+add_odds_post <- function() {
+    
+    mamba_lag_long_post <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"),
+                               "mamba_lag_long_post") %>%
+        collect() %>%
+        mutate(game_date = as_date(game_date, origin ="1970-01-01"))
+    
+    mamba_series <- mamba_lag_long_post %>%
+        group_by(season_year, team_id) %>%
+        mutate(
+            series_matchup = paste0(team_name," - ", opp_team_name, " - ", season_year),
+            post_wins = cumsum(wl == "W"),
+            opp_post_wins = cumsum(wl == "L")
+        ) %>%
+        ungroup() %>%
+        group_by(series_matchup) %>%
+        mutate(
+            series_wins = cumsum(wl == "W"),
+            opp_series_wins = cumsum(wl == "L"),
+            series_start = !duplicated(series_matchup)
+        ) %>%
+        ungroup() %>%
+        group_by(season_year, team_name) %>%
+        mutate(
+            across(series_wins:opp_series_wins, \(x) lag(x, n = 1)),
+            series_wins = replace_na(series_wins, 0),
+            opp_series_wins = replace_na(opp_series_wins, 0),
+            series_wins = if_else(series_start == T, 0, series_wins),
+            opp_series_wins = if_else(series_start == T, 0, opp_series_wins),
+            series_counter = cumsum(series_start == T)
+        ) %>%
+        ungroup() %>%
+        mutate(
+            series = case_when(
+                series_counter == 1 ~ "Conf First Round",
+                series_counter == 2 ~ "Conf Semifinals",
+                series_counter == 3 ~ "Conf Finals",
+                series_counter == 4 ~ "Finals",
+            )
+        ) %>%
+        select(-c(series_matchup:opp_post_wins), -series_start, -series_counter)
+    
+    bref_series_odds <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"),
+                            "bref_series_odds") %>% collect()
+    
+    mamba_series_post <- mamba_series %>%
+        left_join((bref_series_odds %>% select(season_year:favorite_team, favorite_odds)),
+                  by = c("season_year" = "season_year",
+                         "team_abbreviation" = "favorite_team",
+                         "series" = "series")) %>%
+        left_join((bref_series_odds %>% select(season_year:series, underdog_team, underdog_odds)),
+                  by = c("season_year" = "season_year",
+                         "team_abbreviation" = "underdog_team",
+                         "series" = "series")) %>%
+        mutate(series_odds = if_else(is.na(favorite_odds), underdog_odds, favorite_odds)) %>%
+        select(-favorite_odds, -underdog_odds)
+    
+    odds_db_post <- tbl(dbConnect(SQLite(), "../nba_sql_db/nba_db"),
+                        "nba_odds_post") %>%
+        collect() %>%
+        mutate(game_date = as_date(game_date, origin ="1970-01-01")) %>%
+        select(-opp_team_name, -location)
+    
+    mamba_long_odds_post <- mamba_series_post %>%
+        left_join(odds_db_post, by = c("season_year", "game_date", "team_name"))
+    
+    assign(x = "mamba_long_odds_post", mamba_long_odds_post, envir = .GlobalEnv)
+    
+}
+
+add_odds_post()
+
+
+
+
+
+
+
+
 #### basketball reference ---- re-code team and player stats
 ## player advanced & player totals & player per game ----
 bref_player_advanced_db <- tbl(dbConnect(SQLite(),
@@ -1719,6 +2471,13 @@ dbListTables(NBAdb)
 # DBI::dbWriteTable(NBAdb, "mamba_raw_odds", mamba_raw_odds, append = T)              # automated --- 2020-2024
 # DBI::dbWriteTable(NBAdb, "mamba_long_odds", mamba_long_odds, append = T)            # automated --- 2020-2024
 # DBI::dbWriteTable(NBAdb, "mamba_wide_odds", mamba_wide_odds, append = T)            # automated --- 2020-2024
+
+#### MAMBA Playoffs ----
+# DBI::dbWriteTable(NBAdb, "all_standings", all_standings, append = T)                # automated --- 2020-2024
+# DBI::dbWriteTable(NBAdb, "bref_series_odds", bref_series_odds, overwrite = T)       # automated --- 2020-2024
+# DBI::dbWriteTable(NBAdb, "nba_odds_post", nba_odds_post, append = T)                # automated --- 2020-2024
+# DBI::dbWriteTable(NBAdb, "mamba_lag_long_post", mamba_lag_long_post, append = T)    # automated --- 2020-2024
+# DBI::dbWriteTable(NBAdb, "mamba_long_odds_post", mamba_long_odds_post, append = T). # automated --- 2020-2024
 
 #### Team & Player Stats ----
 # DBI::dbWriteTable(NBAdb, "box_scores_team", box_scores_team, append = T)            # automated --- 1997-2023
@@ -1878,581 +2637,57 @@ scrape_matchups(game_ids)
 
 
 
-#### scrape playoff teams ----
-scrape_standings <- function(seasons) {
-    
-    all_standings <- data.frame()
-    
-    generate_headers <- function() {
-        headers = c(
-            `Sec-Fetch-Site` = "same-site",
-            `Accept` = "*/*",
-            `Origin` = "https://www.nba.com",
-            `Sec-Fetch-Dest` = "empty",
-            `Accept-Language` = "en-US,en;q=0.9",
-            `Sec-Fetch-Mode` = "cors",
-            `Host` = "stats.nba.com",
-            `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
-            `Referer` = "https://www.nba.com/",
-            `Accept-Encoding` = "gzip, deflate, br",
-            `Connection` = "keep-alive"
-        )
-        return(headers)
-    }
-    
-    headers <- generate_headers()
-    
-    generate_parameters <- function(year, measure_type) {
-        year <- (year - 1)
-        season <- sprintf("%d-%02d", year, (year + 1) %% 100)
-        params = list(
-            `GroupBy` = "conf",
-            `LeagueID` = "00",
-            `Season` = season,
-            `SeasonType` = "Regular Season",
-            `Section` = "overall"
-        )
-        return(params)
-    }
-    
-    for (year in seasons) {
-        params <- generate_parameters(year)
-        
-        res <- httr::GET(url = "https://stats.nba.com/stats/leaguestandingsv3",
-                         httr::add_headers(.headers=headers), query = params)
-        
-        data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
-        column_names <- data$headers %>% as.character()
-        dt <- rbindlist(data$rowSet) %>%
-            setnames(column_names) %>%
-            clean_names() %>%
-            mutate(season_year = year)
-        
-        all_standings <- bind_rows(all_standings, dt)
-        
-        print(paste0(params$Season))
-    }
-    
-    assign(x = "all_standings", all_standings, envir = .GlobalEnv)
-    
-}
-
-scrape_standings(2020:2024)
-
-playoff_teams <- all_standings %>%
-    mutate(playoff_seed = if_else(season_year > 2020,
-                                  playoff_seeding, playoff_rank)) %>%
-    filter(playoff_seed <= 8)
-
-
-
-#### scrape stats for mamba model - playoffs ----
-mamba_nba_post <- function(seasons) {
-    
-    generate_headers <- function() {
-        headers <- c(
-            `Sec-Fetch-Site` = "same-site",
-            `Accept` = "*/*",
-            `Origin` = "https://www.nba.com",
-            `Sec-Fetch-Dest` = "empty",
-            `Accept-Language` = "en-US,en;q=0.9",
-            `Sec-Fetch-Mode` = "cors",
-            `Host` = "stats.nba.com",
-            `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-            `Referer` = "https://www.nba.com/",
-            `Accept-Encoding` = "gzip, deflate, br",
-            `Connection` = "keep-alive"
-        )
-        return(headers)
-    }
-    
-    generate_parameters_reg <- function(year, measure_type) {
-        year <- (year - 1)
-        season <- sprintf("%d-%02d", year, (year + 1) %% 100)
-        params <- list(
-            `DateFrom` = "",
-            `DateTo` = "",
-            `GameSegment` = "",
-            `ISTRound` = "",
-            `LastNGames` = "0",
-            `LeagueID` = "00",
-            `Location` = "",
-            `MeasureType` = measure_type,
-            `Month` = "0",
-            `OpponentTeamID` = "0",
-            `Outcome` = "",
-            `PORound` = "0",
-            `PaceAdjust` = "N",
-            `PerMode` = "Totals",
-            `Period` = "0",
-            `PlusMinus` = "N",
-            `Rank` = "N",
-            `Season` = season,
-            `SeasonSegment` = "",
-            `SeasonType` = "Regular Season",
-            `ShotClockRange` = "",
-            `VsConference` = "",
-            `VsDivision` = ""
-        )
-        return(params)
-    }
-    
-    generate_parameters_post <- function(year, measure_type) {
-        year <- (year - 1)
-        season <- sprintf("%d-%02d", year, (year + 1) %% 100)
-        params <- list(
-            `DateFrom` = "",
-            `DateTo` = "",
-            `GameSegment` = "",
-            `ISTRound` = "",
-            `LastNGames` = "0",
-            `LeagueID` = "00",
-            `Location` = "",
-            `MeasureType` = measure_type,
-            `Month` = "0",
-            `OpponentTeamID` = "0",
-            `Outcome` = "",
-            `PORound` = "0",
-            `PaceAdjust` = "N",
-            `PerMode` = "Totals",
-            `Period` = "0",
-            `PlusMinus` = "N",
-            `Rank` = "N",
-            `Season` = season,
-            `SeasonSegment` = "",
-            `SeasonType` = "Playoffs",
-            `ShotClockRange` = "",
-            `VsConference` = "",
-            `VsDivision` = ""
-        )
-        return(params)
-    }
-    
-    headers <- generate_headers()
-    
-    # Regular Season
-    all_data_list_reg <- list()
-    
-    # Define available measure types
-    available_measure_types <- c("Base", "Advanced", "Four Factors", "Misc", "Scoring")
-    
-    for (measure_type in available_measure_types) {
-        all_data <- data.frame()
-        
-        for (year in seasons) {
-            params <- generate_parameters_reg(year, measure_type)
-            
-            res <- httr::GET(url = "https://stats.nba.com/stats/teamgamelogs",
-                             httr::add_headers(.headers = headers), query = params)
-            data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
-            column_names <- data$headers %>% as.character()
-            dt <- rbindlist(data$rowSet) %>% setnames(column_names)
-            
-            all_data <- bind_rows(all_data, dt)
-            
-            print(paste0(params$Season, " ", params$MeasureType))
-        }
-        
-        all_data_list_reg[[measure_type]] <- all_data
-    }
-    
-    # Data transformation code
-    cleaned_team_list_reg <- lapply(all_data_list_reg, function(df) {
-        df <- clean_names(df) %>%
-            select(-starts_with(c("e_","opp_")), -ends_with(c("_rank","_flag")))
-        return(df)
-    })
-    
-    combined_df_reg <- cleaned_team_list_reg[[1]]
-    for (i in 2:length(cleaned_team_list_reg)) {
-        df_to_join <- cleaned_team_list_reg[[i]]
-        existing_cols <- intersect(names(combined_df_reg), names(df_to_join))
-        existing_cols <- setdiff(existing_cols, c("game_id", "team_name"))
-        df_to_join <- df_to_join %>% select(-any_of(existing_cols))
-        combined_df_reg <- left_join(combined_df_reg, df_to_join, by = c("game_id", "team_name"))
-    }
-    
-    team_all_stats_reg <- combined_df_reg %>%
-        arrange(game_date, game_id) %>%
-        mutate(location = if_else(grepl("@", matchup) == T, "away", "home"),
-               game_date = as_date(game_date),
-               season_year = as.numeric(substr(season_year, 1, 4)) + 1) %>%
-        select(season_year:matchup, location, wl:pct_uast_fgm)
-    
-    opp_all_stats_reg <- team_all_stats_reg %>%
-        select(game_id, team_id, team_abbreviation, team_name,
-               fgm:pct_uast_fgm) %>%
-        rename_with(~paste0("opp_", .), -c(game_id)) %>%
-        select(-opp_plus_minus)
-    
-    team_games_reg <- team_all_stats_reg %>%
-        distinct(season_year, game_id, game_date, team_id, team_name) %>%
-        group_by(season_year, team_id) %>%
-        mutate(
-            game_count_season = 1:n(),
-            days_rest_team = ifelse(game_count_season > 1,
-                                    (game_date - lag(game_date) - 1),
-                                    120),
-            days_next_game_team =
-                ifelse(game_count_season < 82,
-                       ((
-                           lead(game_date) - game_date
-                       ) - 1),
-                       120),
-            days_next_game_team = days_next_game_team %>% as.numeric(),
-            days_rest_team = days_rest_team %>% as.numeric(),
-            is_b2b = if_else(days_next_game_team == 0 |
-                                 days_rest_team == 0, TRUE, FALSE),
-            is_b2b_first = if_else(lead(days_next_game_team) == 0, TRUE, FALSE),
-            is_b2b_second = if_else(lag(days_next_game_team) == 0, TRUE, FALSE)
-        ) %>%
-        ungroup() %>%
-        mutate_if(is.logical, ~ ifelse(is.na(.), FALSE, .)) %>%
-        select(game_id, team_name,
-               is_b2b_first, is_b2b_second, game_count_season)
-    
-    opp_team_games_reg <- team_games_reg %>%
-        select(game_id, team_name,
-               is_b2b_first, is_b2b_second, game_count_season) %>%
-        rename_with(~paste0("opp_", .), -c(game_id))
-    
-    raw_stats_reg <- team_all_stats_reg %>%
-        inner_join(opp_all_stats_reg, by = c("game_id"), relationship = "many-to-many") %>%
-        filter(team_name != opp_team_name) %>%
-        left_join(team_games_reg, by = c("game_id", "team_name")) %>%
-        left_join(opp_team_games_reg, by = c("game_id", "opp_team_name")) %>%
-        mutate(season_type = "regular") %>%
-        select(season_type,
-               season_year, team_id, team_abbreviation, team_name,
-               opp_team_id, opp_team_abbreviation, opp_team_name,
-               game_id:min, pts, opp_pts, plus_minus,
-               game_count_season, opp_game_count_season,
-               is_b2b_first, is_b2b_second, opp_is_b2b_first, opp_is_b2b_second,
-               fgm:opp_pct_uast_fgm) %>%
-        arrange(game_date, game_id, location) %>%
-        semi_join(playoff_teams,
-                  by = c("season_year", "team_id")) %>%
-        semi_join(playoff_teams,
-                  by = c("season_year", "opp_team_id" = "team_id"))
-    
-    stats_vs_post <- raw_stats_reg %>%
-        group_by(season_year, team_id, team_name) %>%
-        summarize(wins_vs_post = sum(wl == "W"),
-                  games_vs_post = n(),
-                  win_pct_vs_post = wins_vs_post/games_vs_post) %>%
-        ungroup() %>%
-        left_join(playoff_teams %>% select(season_year, team_id, playoff_seed),
-                  by = c("season_year", "team_id")) %>%
-        select(season_year, team_id, wins_vs_post:playoff_seed)
-    
-    
-    
-    
-    # Playoffs
-    all_data_list_post <- list()
-    
-    # Define available measure types
-    available_measure_types <- c("Base", "Advanced", "Four Factors", "Misc", "Scoring")
-    
-    for (measure_type in available_measure_types) {
-        all_data <- data.frame()
-        
-        for (year in seasons) {
-            params <- generate_parameters_post(year, measure_type)
-            
-            res <- httr::GET(url = "https://stats.nba.com/stats/teamgamelogs",
-                             httr::add_headers(.headers = headers), query = params)
-            data <- httr::content(res) %>% .[['resultSets']] %>% .[[1]]
-            column_names <- data$headers %>% as.character()
-            dt <- rbindlist(data$rowSet) %>% setnames(column_names)
-            
-            all_data <- bind_rows(all_data, dt)
-            
-            print(paste0(params$Season, " ", params$MeasureType))
-        }
-        
-        all_data_list_post[[measure_type]] <- all_data
-    }
-    
-    # Data transformation code
-    cleaned_team_list_post <- lapply(all_data_list_post, function(df) {
-        df <- clean_names(df) %>%
-            select(-starts_with(c("e_","opp_")), -ends_with(c("_rank","_flag")))
-        return(df)
-    })
-    
-    combined_df_post <- cleaned_team_list_post[[1]]
-    for (i in 2:length(cleaned_team_list_post)) {
-        df_to_join <- cleaned_team_list_post[[i]]
-        existing_cols <- intersect(names(combined_df_post), names(df_to_join))
-        existing_cols <- setdiff(existing_cols, c("game_id", "team_name"))
-        df_to_join <- df_to_join %>% select(-any_of(existing_cols))
-        combined_df_post <- left_join(combined_df_post, df_to_join, by = c("game_id", "team_name"))
-    }
-    
-    team_all_stats_post <- combined_df_post %>%
-        arrange(game_date, game_id) %>%
-        mutate(location = if_else(grepl("@", matchup) == T, "away", "home"),
-               game_date = as_date(game_date),
-               season_year = as.numeric(substr(season_year, 1, 4)) + 1) %>%
-        select(season_year:matchup, location, wl:pct_uast_fgm)
-    
-    opp_all_stats_post <- team_all_stats_post %>%
-        select(game_id, team_id, team_abbreviation, team_name,
-               fgm:pct_uast_fgm) %>%
-        rename_with(~paste0("opp_", .), -c(game_id)) %>%
-        select(-opp_plus_minus)
-    
-    team_games_post <- team_all_stats_post %>%
-        distinct(season_year, game_id, game_date, team_id, team_name) %>%
-        group_by(season_year, team_id) %>%
-        mutate(
-            game_count_season = 1:n(),
-            days_rest_team = ifelse(game_count_season > 1,
-                                    (game_date - lag(game_date) - 1),
-                                    120),
-            days_next_game_team =
-                ifelse(game_count_season < 82,
-                       ((
-                           lead(game_date) - game_date
-                       ) - 1),
-                       120),
-            days_next_game_team = days_next_game_team %>% as.numeric(),
-            days_rest_team = days_rest_team %>% as.numeric(),
-            is_b2b = if_else(days_next_game_team == 0 |
-                                 days_rest_team == 0, TRUE, FALSE),
-            is_b2b_first = if_else(lead(days_next_game_team) == 0, TRUE, FALSE),
-            is_b2b_second = if_else(lag(days_next_game_team) == 0, TRUE, FALSE)
-        ) %>%
-        ungroup() %>%
-        mutate_if(is.logical, ~ ifelse(is.na(.), FALSE, .)) %>%
-        select(game_id, team_name,
-               is_b2b_first, is_b2b_second, game_count_season)
-    
-    opp_team_games_post <- team_games_post %>%
-        select(game_id, team_name,
-               is_b2b_first, is_b2b_second, game_count_season) %>%
-        rename_with(~paste0("opp_", .), -c(game_id))
-    
-    raw_stats_post <- team_all_stats_post %>%
-        inner_join(opp_all_stats_post, by = c("game_id"), relationship = "many-to-many") %>%
-        filter(team_name != opp_team_name) %>%
-        left_join(team_games_post, by = c("game_id", "team_name")) %>%
-        left_join(opp_team_games_post, by = c("game_id", "opp_team_name")) %>%
-        mutate(season_type = "post") %>%
-        select(season_type,
-               season_year, team_id, team_abbreviation, team_name,
-               opp_team_id, opp_team_abbreviation, opp_team_name,
-               game_id:min, pts, opp_pts, plus_minus,
-               game_count_season, opp_game_count_season,
-               is_b2b_first, is_b2b_second, opp_is_b2b_first, opp_is_b2b_second,
-               fgm:opp_pct_uast_fgm) %>%
-        arrange(game_date, game_id, location)
-    
-    
-    
-    
-    raw_stats <- raw_stats_reg %>%
-        bind_rows(raw_stats_post)
-    
-    stats_mov_avg <- raw_stats %>%
-        mutate(pts_2pt_mr = round(pct_pts_2pt_mr*pts,0),
-               ast_2pm = round(pct_ast_2pm*(fgm-fg3m),0),
-               ast_3pm = round(pct_ast_3pm*fg3m,0),
-               opp_pts_2pt_mr = round(opp_pct_pts_2pt_mr*opp_pts,0),
-               opp_ast_2pm = round(opp_pct_ast_2pm*(opp_fgm-opp_fg3m),0),
-               opp_ast_3pm = round(opp_pct_ast_3pm*opp_fg3m,0)
-        ) %>%
-        group_by(season_year, team_id, location) %>%
-        mutate(across(c(fgm:opp_pct_uast_fgm),
-                      \(x) pracma::movavg(x, n = 10, type = 'e'))
-        ) %>%
-        ungroup() %>%
-        mutate(fg_pct = fgm/fga,
-               fg3_pct = fg3m/fg3a,
-               ft_pct = ftm/fta,
-               ast_pct = ast/fgm,
-               oreb_pct = oreb/(oreb+opp_dreb),
-               dreb_pct = dreb/(dreb+opp_oreb),
-               reb_pct = reb/(reb+opp_reb),
-               tm_tov_pct = tov/poss,
-               efg_pct = (fgm+(0.5*fg3m))/fga,
-               ts_pct = pts/(2*(fga+0.44*fta)),
-               fta_rate = fta/fga,
-               pct_fga_2pt = (fga-fg3a)/fga,
-               pct_fga_3pt = 1-pct_fga_2pt,
-               pct_pts_2pt = ((fgm-fg3m)*2)/pts,
-               pct_pts_2pt_mr = pts_2pt_mr/pts,
-               pct_pts_3pt = (fg3m*3)/pts,
-               pct_pts_fb = pts_fb/pts,
-               pct_pts_ft = ftm/pts,
-               pct_pts_off_tov = pts_off_tov/pts,
-               pct_pts_paint = pts_paint/pts,
-               pct_ast_2pm = ast_2pm/(fgm-fg3m),
-               pct_uast_2pm = 1-pct_ast_2pm,
-               pct_ast_3pm = ast_3pm/fg3m,
-               pct_uast_3pm = 1-pct_ast_3pm,
-               pct_ast_fgm = ast_pct,
-               pct_uast_fgm = 1-ast_pct,
-               opp_fg_pct = opp_fgm/opp_fga,
-               opp_fg3_pct = opp_fg3m/opp_fg3a,
-               opp_ft_pct = opp_ftm/opp_fta,
-               opp_ast_pct = opp_ast/opp_fgm,
-               opp_oreb_pct = opp_oreb/(opp_oreb+dreb),
-               opp_dreb_pct = opp_dreb/(opp_dreb+oreb),
-               opp_reb_pct = opp_reb/(reb+opp_reb),
-               opp_tm_tov_pct = opp_tov/opp_poss,
-               opp_efg_pct = (opp_fgm+(0.5*opp_fg3m))/opp_fga,
-               opp_ts_pct = opp_pts/(2*(opp_fga+0.44*opp_fta)),
-               opp_fta_rate = opp_fta/opp_fga,
-               opp_pct_fga_2pt = (opp_fga-opp_fg3a)/opp_fga,
-               opp_pct_fga_3pt = 1-opp_pct_fga_2pt,
-               opp_pct_pts_2pt = ((opp_fgm-opp_fg3m)*2)/opp_pts,
-               opp_pct_pts_2pt_mr = opp_pts_2pt_mr/opp_pts,
-               opp_pct_pts_3pt = (opp_fg3m*3)/opp_pts,
-               opp_pct_pts_fb = opp_pts_fb/opp_pts,
-               opp_pct_pts_ft = opp_ftm/opp_pts,
-               opp_pct_pts_off_tov = opp_pts_off_tov/opp_pts,
-               opp_pct_pts_paint = opp_pts_paint/opp_pts,
-               opp_pct_ast_2pm = opp_ast_2pm/(opp_fgm-opp_fg3m),
-               opp_pct_uast_2pm = 1-opp_pct_ast_2pm,
-               opp_pct_ast_3pm = opp_ast_3pm/opp_fg3m,
-               opp_pct_uast_3pm = 1-opp_pct_ast_3pm,
-               opp_pct_ast_fgm = opp_ast_pct,
-               opp_pct_uast_fgm = 1-opp_ast_pct) %>%
-        select(-c(pts_2pt_mr, ast_2pm, ast_3pm,
-                  opp_pts_2pt_mr, opp_ast_2pm, opp_ast_3pm))
-    
-    stats_lag <- stats_mov_avg %>%
-        group_by(season_year, team_name, location) %>%
-        mutate(across(fgm:opp_pct_uast_fgm, \(x) lag(x, n = 1))) %>%
-        ungroup() %>%
-        na.exclude()
-    
-    base_stats_full <- stats_lag %>%
-        select(season_type:opp_is_b2b_second)
-    
-    team_stats <- stats_lag %>%
-        select(season_year, game_id, team_name, fgm:opp_pct_uast_fgm) %>%
-        rename_with(~paste0("team_", .), fgm:opp_pct_uast_fgm) %>%
-        select(-season_year)
-    
-    opp_stats <- stats_lag %>%
-        select(season_year, game_id, team_name, fgm:opp_pct_uast_fgm) %>%
-        rename_with(~paste0("opp_", .), team_name:opp_pct_uast_fgm) %>%
-        select(-season_year)
-    
-    nba_final_full <- base_stats_full %>%
-        left_join(team_stats, by = c("game_id" = "game_id",
-                                     "team_name" = "team_name")) %>%
-        left_join(opp_stats, by = c("game_id" = "game_id",
-                                    "opp_team_name" = "opp_team_name")) %>%
-        arrange(game_date, game_id, location) %>%
-        na.exclude() %>%
-        left_join(stats_vs_post, by = c("season_year", "team_id")) %>%
-        filter(season_type == "post")
-    
-    
-    # lagged stats in mamba format - long
-    assign(x = "mamba_lag_long_post", nba_final_full, envir = .GlobalEnv)
-    
-}
-
-mamba_nba_post(2020:2024)
-
-
-
-mamba_post <- mamba_lag_long_post %>%
-    group_by(season_year, team_id) %>%
-    mutate(
-        series_matchup = paste0(team_name," - ", opp_team_name, " - ", season_year),
-        post_wins = cumsum(wl == "W"),
-        opp_post_wins = cumsum(wl == "L")
-    ) %>%
-    ungroup() %>%
-    group_by(series_matchup) %>%
-    mutate(
-        series_wins = cumsum(wl == "W"),
-        opp_series_wins = cumsum(wl == "L"),
-        series_start = !duplicated(series_matchup)
-    ) %>%
-    ungroup() %>%
-    group_by(season_year, team_name) %>%
-    mutate(
-        across(series_wins:opp_series_wins, \(x) lag(x, n = 1)),
-        series_wins = replace_na(series_wins, 0),
-        opp_series_wins = replace_na(opp_series_wins, 0),
-        series_wins = if_else(series_start == T, 0, series_wins),
-        opp_series_wins = if_else(series_start == T, 0, opp_series_wins),
-        series_counter = cumsum(series_start == T)
-    ) %>%
-    ungroup() %>%
-    mutate(
-        series = case_when(
-            series_counter == 1 ~ "Conf First Round",
-            series_counter == 2 ~ "Conf Semifinals",
-            series_counter == 3 ~ "Conf Finals",
-            series_counter == 4 ~ "Finals",
-        )
-    ) %>%
-    select(-c(series_matchup:opp_post_wins), -series_start, -series_counter)
-
-
-
-
-#### scrape playoff series odds
-url <- paste0("https://www.basketball-reference.com/playoffs/series.html")
-
-webpage <- read_html(url)
-tables <- webpage %>% html_nodes("table") %>% html_table()
-
-df <- as.data.frame(tables[1]) %>%
-    row_to_names(row_number = 1) %>%
-    clean_names() %>%
-    select(yr, series, favorite, underdog) %>%
-    filter(yr != "Yr" & yr != "") %>%
-    mutate(
-        favorite_team = str_trim(gsub("\\(.*\\)", "", favorite)),
-        favorite_odds = as.numeric(gsub(".*\\((.*)\\)", "\\1", favorite)),
-        underdog_team = str_trim(gsub("\\(.*\\)", "", underdog)),
-        underdog_odds = as.numeric(gsub(".*\\((.*)\\)", "\\1", underdog)),
-        favorite_team = str_replace(favorite_team, "BRK", "BKN"),
-        favorite_team = str_replace(favorite_team, "PHO", "PHX"),
-        underdog_team = str_replace(underdog_team, "BRK", "BKN"),
-        underdog_team = str_replace(underdog_team, "PHO", "PHX"),
-        series = if_else(grepl("Conf", series), sub(".*Conf", "Conf", series), series),
-        season_year = as.numeric(yr)
-    ) %>%
-    select(season_year, series,
-           favorite_team, favorite_odds,
-           underdog_team, underdog_odds)
-
-
-joined_df <- mamba_post %>%
-    left_join((df %>% select(season_year:favorite_team, favorite_odds)),
-              by = c("season_year" = "season_year",
-                     "team_abbreviation" = "favorite_team",
-                     "series" = "series")) %>%
-    left_join((df %>% select(season_year:series, underdog_team, underdog_odds)),
-              by = c("season_year" = "season_year",
-                     "team_abbreviation" = "underdog_team",
-                     "series" = "series")) %>%
-    mutate(team_odds = if_else(is.na(favorite_odds), underdog_odds, favorite_odds)) %>%
-    select(-favorite_odds, -underdog_odds)
 
 
 
 
 
 
+mamba_lag_long_post <- read_csv("/Users/jesse/Desktop/mamba_lag_long_post.csv")
 
-#### scrape historical odds
-playoff_dates <- mamba_lag_long_post %>% filter(game_date >= "2023-05-05")
-playoff_dates <- unique(playoff_dates$game_date)
+playoff_odds <- readxl::read_xlsx("/Users/jesse/Desktop/playoff_odds.xlsx",
+                                  sheet = "all")
 
-playoff_odds <- data.frame()
 
+playoff_odds <- playoff_odds %>%
+    mutate(game_id = (row_number() - 1) %/% 2 + 1,
+           location = if_else(row_number() %% 2 == 1, "away", "home"))
+
+playoff_odds_db <- playoff_odds %>%
+    left_join(playoff_odds, by = "game_id") %>%
+    filter(team_name.x != team_name.y) %>%
+    select(season_year.x, game_date.x, location.x,
+           team_name.x, team_name.y,
+           spread.x, spread.y, moneyline.x, moneyline.y, total.x)
+
+colnames(playoff_odds_db) <- c("season_year", "game_date", "location",
+                               "team_name", "opp_team_name",
+                               "team_spread", "opp_spread",
+                               "team_moneyline", "opp_moneyline", "over_under")
+
+odds_wpo <- playoff_odds_db %>%
+    mutate(team_moneyline = odds.converter::odds.us2dec(team_moneyline),
+           opp_moneyline = odds.converter::odds.us2dec(opp_moneyline)) %>%
+    select(team_moneyline, opp_moneyline)
+
+odds_wpo <- implied::implied_probabilities(odds_wpo, method = 'wpo')
+
+playoff_odds_final <- playoff_odds_db %>%
+    mutate(team_implied_prob = odds_wpo$probabilities[,1],
+           opp_implied_prob = odds_wpo$probabilities[,2])
+
+nba_odds_post <- playoff_odds_final %>%
+    mutate(game_date = as.Date(game_date))
+
+
+
+
+
+#### scrape historical odds - scores and odds website ----
 # https://www.scoresandodds.com/nba?date=2024-05-04
+
+playoff_dates <- unique(playoff_dates$game_date)
+playoff_odds <- data.frame()
 
 for(game_date in playoff_dates){
     
@@ -2488,48 +2723,7 @@ for(game_date in playoff_dates){
     
 }
 
-
-
-
-
-
-library(xml2)
-
-# https://www.sportsbookreview.com/betting-odds/nba-basketball/?date=2024-05-03
-
-oddsURL <- "https://www.sportsbookreview.com/betting-odds/nba-basketball/?date=2024-05-03"
-
-res <- httr::GET(oddsURL)
-con <- httr::content(res, 'text')
-oddspage <- xml2::read_html(con)
-
-node <- rvest::html_nodes(oddspage, "section#section-nba")
-
-child <- html_children(node)
-
-
-
-
-
-
-
-
-
-
-
-#### playoffs odds
-headers = c(
-    `Accept` = "application/json",
-    `Origin` = "https://www.actionnetwork.com",
-    `Referer` = "https://www.actionnetwork.com/nba/odds",
-    `Sec-Fetch-Dest` = "empty",
-    `Sec-Fetch-Mode` = "cors",
-    `Sec-Fetch-Site` = "same-site",
-    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15"
-)
-
-res <- httr::GET(url = "https://api.actionnetwork.com/web/v2/scoreboard/nba?bookIds=15,30,76,75,123,69,68,972,71,247,79&date=20240416&periods=event", httr::add_headers(.headers=headers))
-
+write_csv(playoff_odds, "/Users/jesse/Desktop/playoff_odds.csv")
 
 
 
