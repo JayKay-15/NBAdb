@@ -2477,7 +2477,7 @@ dbListTables(NBAdb)
 # DBI::dbWriteTable(NBAdb, "bref_series_odds", bref_series_odds, overwrite = T)       # automated --- 2020-2024
 # DBI::dbWriteTable(NBAdb, "nba_odds_post", nba_odds_post, append = T)                # automated --- 2020-2024
 # DBI::dbWriteTable(NBAdb, "mamba_lag_long_post", mamba_lag_long_post, append = T)    # automated --- 2020-2024
-# DBI::dbWriteTable(NBAdb, "mamba_long_odds_post", mamba_long_odds_post, append = T). # automated --- 2020-2024
+# DBI::dbWriteTable(NBAdb, "mamba_long_odds_post", mamba_long_odds_post, overwrite = T)  # automated --- 2020-2024
 
 #### Team & Player Stats ----
 # DBI::dbWriteTable(NBAdb, "box_scores_team", box_scores_team, append = T)            # automated --- 1997-2023
@@ -2637,7 +2637,10 @@ scrape_matchups(game_ids)
 
 
 
-
+## query db
+df <- tbl(NBAdb, "mamba_lag_long_post") %>%
+    collect() %>%
+    mutate(game_date = as_date(game_date, origin ="1970-01-01"))
 
 
 
