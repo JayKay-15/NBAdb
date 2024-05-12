@@ -2158,7 +2158,7 @@ nba_odds_post_db <- tbl(NBAdb, "nba_odds_post") %>%
     collect() %>%
     mutate(game_date = as_date(game_date, origin ="1970-01-01"))
 
-season_active_post <- tbl(NBAdb, "mamba_long_odds_post") %>%
+season_active_post <- tbl(NBAdb, "mamba_lag_long_post") %>%
     collect() %>%
     mutate(game_date = as_date(game_date, origin ="1970-01-01"))
 
@@ -2689,7 +2689,7 @@ nba_odds_post <- playoff_odds_final %>%
 #### scrape historical odds - scores and odds website ----
 # https://www.scoresandodds.com/nba?date=2024-05-04
 
-playoff_dates <- unique(playoff_dates$game_date)
+playoff_dates <- unique(missing_dates$game_date)
 playoff_odds <- data.frame()
 
 for(game_date in playoff_dates){
