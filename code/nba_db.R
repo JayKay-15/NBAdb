@@ -801,8 +801,9 @@ nba_scores <- function(seasons) {
     assign(x = "all_nba_scores", joined_stats, envir = .GlobalEnv)
 }
 
-nba_scores(1997:2023)
+nba_scores(2024)
 
+game_ids <- unique(all_nba_scores$game_id)
 
 #### NBA STATS DATABASE ####
 
@@ -948,7 +949,7 @@ scrape_nba_team_stats <- function(seasons) {
     assign(x = "box_scores_team", nba_final, envir = .GlobalEnv)
 }
 
-scrape_nba_team_stats(seasons = c(1997:2023))
+scrape_nba_team_stats(seasons = c(2024))
 
 #### scrape all player stats ----
 scrape_nba_player_stats <- function(seasons) {
@@ -1091,7 +1092,7 @@ scrape_nba_player_stats <- function(seasons) {
     assign(x = "box_scores_player", nba_final, envir = .GlobalEnv)
 }
 
-scrape_nba_player_stats(seasons = c(1997:2023))
+scrape_nba_player_stats(seasons = c(2024))
 
 ## play by play & win probability & fanduel ----
 
@@ -1515,7 +1516,7 @@ scrape_nba_shots <- function(seasons) {
     
 }
 
-scrape_nba_shots(1997:2023)
+scrape_nba_shots(2024)
 
 #### process shots data ----
 process_shots <- function(shots, league_avg) {
@@ -1543,7 +1544,7 @@ process_shots <- function(shots, league_avg) {
     assign(x = "league_avg_processed", league_avg_processed, envir = .GlobalEnv)
 }
 
-process_shots(shots, league_avg)
+process_shots(all_shots, league_avg)
 
 ## dictionaries ----
 
@@ -2480,15 +2481,17 @@ dbListTables(NBAdb)
 # DBI::dbWriteTable(NBAdb, "mamba_long_odds_post", mamba_long_odds_post, overwrite = T)  # automated --- 2020-2024
 
 #### Team & Player Stats ----
-# DBI::dbWriteTable(NBAdb, "box_scores_team", box_scores_team, append = T)            # automated --- 1997-2023
-# DBI::dbWriteTable(NBAdb, "box_scores_player", box_scores_player, append = T)        # automated --- 1997-2023
+# DBI::dbWriteTable(NBAdb, "box_scores_team", box_scores_team, append = T)            # automated --- 1997-2024
+# DBI::dbWriteTable(NBAdb, "box_scores_player", box_scores_player, append = T)        # automated --- 1997-2024
+# DBI::dbWriteTable(NBAdb, "bref_adv_box", bref_adv_box, append = T)                  # automated --- 2014-2024
+# DBI::dbWriteTable(NBAdb, "bref_games", bref_games, append = T)                      # automated --- 2014-2024
 
 #### Shots & Scores ----
-# DBI::dbWriteTable(NBAdb, "all_shots", shots, append = T)                            # automated --- 1997-2023
-# DBI::dbWriteTable(NBAdb, "league_avg", league_avg, append = T)                      # automated --- 1997-2023
-# DBI::dbWriteTable(NBAdb, "all_shots_processed", shots_processed, append = T)        # automated --- 1997-2023
-# DBI::dbWriteTable(NBAdb, "league_avg_processed", league_avg_processed, append = T)  # automated --- 1997-2023
-# DBI::dbWriteTable(NBAdb, "all_nba_scores", all_nba_scores, append = T)              # automated --- 1997-2023
+# DBI::dbWriteTable(NBAdb, "all_shots", all_shots, append = T)                        # automated --- 1997-2024
+# DBI::dbWriteTable(NBAdb, "league_avg", league_avg, append = T)                      # automated --- 1997-2024
+# DBI::dbWriteTable(NBAdb, "all_shots_processed", all_shots_processed, append = T)    # automated --- 1997-2024
+# DBI::dbWriteTable(NBAdb, "league_avg_processed", league_avg_processed, append = T)  # automated --- 1997-2024
+# DBI::dbWriteTable(NBAdb, "all_nba_scores", all_nba_scores, append = T)              # automated --- 1997-2024
 
 #### Play by Play & Win Probability ----
 # DBI::dbWriteTable(NBAdb, "play_by_play", pbp_df, append = T)                        # automated --- 2019-2023
@@ -2531,7 +2534,7 @@ scrape_matchups <- function(game_ids) {
     
     # loop that pauses 5 minutes between scrapes - 100 games at a time
     game_ids <- unique(game_ids)
-    sleeper <- 90
+    sleeper <- 300
     games_per_batch <- 100
     game_counter <- 0
     matchups_final <- data.frame()
