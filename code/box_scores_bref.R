@@ -58,7 +58,7 @@ saveRDS(df, "./box_scores/2024_games.rds")
 
 #### box scores scraper ----
 df_games <- read_rds("./box_scores/2024_games.rds")
-df_adv <- read_rds("./box_scores/2024_adv.rds")
+df_adv <- read_rds("./box_scores/2023_adv.rds")
 
 game_df <- df_games %>% filter(!game_id %in% df_adv$game_id)
 n_distinct(games_df$game_id)
@@ -207,7 +207,32 @@ for (current_id in game_ids) {
     master_df <- rbind(master_df,full_box)
 }
 
-saveRDS(master_df, "./box_scores/NBA_2023_advanced_box_scores.rds")
+saveRDS(master_df, "./box_scores/2024_basic.rds")
+
+
+
+
+#### combine rds files ----
+## advanced box scores
+adv_file_paths <- list.files(path = "./box_scores/", pattern = "adv\\.rds$",
+                             full.names = TRUE)
+
+adv_list <- lapply(adv_file_paths, readRDS)
+
+bref_adv_box <- bind_rows(adv_list)
+
+df_adv <- bref_adv_box
+
+## game files
+game_file_paths <- list.files(path = "./box_scores/", pattern = "games\\.rds$",
+                              full.names = TRUE)
+
+game_list <- lapply(game_file_paths, readRDS)
+
+bref_games <- bind_rows(game_list)
+
+
+
 
 
 #### Adding FIC & VORP ----
@@ -247,6 +272,12 @@ vorp$pt <- (vorp$sec*5)/as.numeric(vorp$tm)
 vorp$VORP <- round((vorp$BPM-(-2))*(vorp$pt),1)
 
 master_vorp <- vorp %>% select(-c(22:24))
+
+
+
+
+
+
 
 
 
