@@ -660,7 +660,7 @@ headers = c(
 )
 
 params = list(
-    `date` = "20240225",
+    `date` = "20210225",
     `periods` = "event"
 )
 
@@ -676,16 +676,62 @@ json <- res$content %>%
 
 
 
+library(httr)
+
+headers = c(
+    `Sec-Fetch-Site` = "same-site",
+    Accept = "application/json",
+    Origin = "https://www.actionnetwork.com",
+    `Sec-Fetch-Dest` = "empty",
+    `Accept-Language` = "en-US,en;q=0.9",
+    `Sec-Fetch-Mode` = "cors",
+    Host = "api.actionnetwork.com",
+    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+    Referer = "https://www.actionnetwork.com/nba/props/points",
+    `Accept-Encoding` = "gzip, deflate, br",
+    Connection = "keep-alive"
+)
+
+params = list(
+    date = "20240225"
+)
+
+res <- httr::GET(url = "https://api.actionnetwork.com/web/v1/leagues/4/props/core_bet_type_27_points",
+                 httr::add_headers(.headers=headers), query = params)
+
+json <- res$content %>%
+    rawToChar() %>%
+    jsonlite::fromJSON(simplifyVector = T)
 
 
 
+library(httr)
 
+headers = c(
+    `Sec-Fetch-Site` = "same-site",
+    Accept = "application/json",
+    Origin = "https://www.actionnetwork.com",
+    `Sec-Fetch-Dest` = "empty",
+    `Accept-Language` = "en-US,en;q=0.9",
+    `Sec-Fetch-Mode` = "cors",
+    Host = "api.actionnetwork.com",
+    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+    Referer = "https://www.actionnetwork.com/nfl/props/passing-props",
+    `Accept-Encoding` = "gzip, deflate, br",
+    Connection = "keep-alive"
+)
 
+params = list(
+    date = "20240918",
+    week = "1"
+)
 
+res <- httr::GET(url = "https://api.actionnetwork.com/web/v1/leagues/1/props/core_bet_type_9_passing_yards",
+                 httr::add_headers(.headers=headers), query = params)
 
-
-
-
+json <- res$content %>%
+    rawToChar() %>%
+    jsonlite::fromJSON(simplifyVector = T)
 
 
 
