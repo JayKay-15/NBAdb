@@ -11,7 +11,7 @@ library(rvest)
 
 # https://www.actionnetwork.com/nba/props/game-props
 
-date_id <- 20241022
+date_id <- 20241023
 
 headers = c(
     `Sec-Fetch-Site` = "same-site",
@@ -355,7 +355,7 @@ get_nba_props <- function(props_list, date) {
     return(results)
 }
 
-date <- "20241022"
+date <- "20241023"
 
 # Call the function to get NBA props data
 nba_props_data <- get_nba_props(props_list, date)
@@ -493,7 +493,7 @@ data <- webpage %>%
 names(data) <- col_names
 
 data <- data %>%
-    mutate(game_date = as_date("2024-10-22"))
+    mutate(game_date = as_date("2024-10-23"))
 
 
 #fantasy pros
@@ -584,11 +584,11 @@ json <- res$content %>%
 
 #### write rds
 # action network
-write_rds(nba_props_data, "./data/nba_props_data_20241022.rds")
-write_rds(json, "./data/game_odds_20241022.rds")
+write_rds(nba_props_data, "./data/nba_props_data_20241023.rds")
+write_rds(json, "./data/game_odds_20241023.rds")
 
 #sportsline
-write_rds(data, "./data/sportsline_20241022.rds")
+write_rds(data, "./data/sportsline_20241023.rds")
 
 
 
