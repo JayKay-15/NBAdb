@@ -2612,7 +2612,7 @@ dbListTables(NBAdb)
 dbDisconnect(NBAdb)
 
 ## query db
-df <- tbl(NBAdb, "box_scores_team") %>%
+df <- tbl(NBAdb, "all_shots") %>%
     collect() %>%
     mutate(game_date = as_date(game_date, origin ="1970-01-01"))
 
