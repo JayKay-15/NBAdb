@@ -571,7 +571,7 @@ params = list(
     `startRange` = "0"
 )
 
-res <- httr::GET(url = "https://stats.nba.com/stats/boxscorematchupsv3",
+res <- httr::GET(url = "https://stats.nba.com/stats/boxscoredefensivev2",
                  httr::add_headers(.headers=headers), query = params)
 
 json <- res$content %>%
